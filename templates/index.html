@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ meta.app_name }} - {{ meta.version }}</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;padding:16px}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,Helvetica,sans-serif;background:#0f1724;color:#e6eef8;padding:18px}
     .card{background:white;padding:16px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.06);margin-bottom:12px}
     input[type=range]{width:100%}
     .actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -19,16 +19,20 @@
     button.small{padding:6px 8px}
     /* Simulation styles */
     .sim-wrapper{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
-    #armCanvas{background:#0b1220;border-radius:6px;box-shadow:inset 0 0 20px rgba(255,255,255,0.02);display:block}
-    .sim-legend{color:#f9fafb;font-size:0.9rem}
+    #armCanvas{background:#071127;border-radius:8px;box-shadow:0 8px 24px rgba(2,6,23,0.6);display:block}
+    #topCanvas{border-radius:6px}
+    .sim-legend{color:#cbd5e1;font-size:0.9rem}
+    .card{background:#0b1226;color:#e6eef8}
+    label{width:110px}
   </style>
 </head>
-<body>
-  <div class="card">
-    <h1>{{ meta.app_name }}</h1>
-    <div id="status">Status: <span id="statusText">--</span></div>
-  </div>
-
+<script>
+// Defensive fallbacks: ensure minimal handlers exist to avoid ReferenceError
+(function(){
+  if(!window.showTab) window.showTab = function(name){
+      <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='100%25' height='100%25' fill='%230b1226'/><circle cx='8' cy='8' r='6' fill='%2360a5fa'/></svg>">
+    </head>
+    <body>
   <div class="tabs">
     <div class="tab active" id="tab-control" onclick="showTab('control')">Control</div>
     <div class="tab" id="tab-calib" onclick="showTab('calibration')">Calibration</div>
@@ -38,9 +42,15 @@
     <!-- Simulation + Controls -->
     <div class="card sim-wrapper">
       <div style="flex: 0 0 520px;">
-        <canvas id="armCanvas" width="520" height="420"></canvas>
-        <div style="margin-top:8px;color:#374151;font-size:0.9rem">
-          <span class="sim-legend">2D-Simulation (Seitenansicht). Basis-Rotation wird als Drehung angewendet.</span>
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <canvas id="armCanvas" width="360" height="360"></canvas>
+          <canvas id="topCanvas" width="160" height="160" style="border-radius:6px;background:#071029"></canvas>
+        </div>
+        <div style="margin-top:8px;color:#9fb1c9;font-size:0.95rem">
+          <span id="simStatus">Sim: initializing...</span>
+        </div>
+            <div style="margin-top:8px;color:#cbd5e1;font-size:0.9rem">
+              <span class="sim-legend">Simulation: Seiten- und Draufsicht. Notation: A=X, B=Y, C=Z.</span>
           <div style="margin-top:6px">
             <button onclick="zoom(1.2)">Zoom In</button>
             <button onclick="zoom(1/1.2)">Zoom Out</button>
@@ -92,16 +102,16 @@ async function api(path, opts){
 }
 
 /* ---------- Control panel handlers ---------- */
-function onSlide(j, v){
+window.onSlide = function(j, v){
   document.getElementById(j+'Val').textContent = v+'°';
   api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:parseInt(v)})});
 }
-function moveHome(j){ const h = j==='hand'?0:90; document.getElementById(j+'Slider').value = h; document.getElementById(j+'Val').textContent = h+'°'; api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:h})}); }
-function test(j){ api('/api/test/'+j,{method:'POST'}); }
-function moveAllHome(){ api('/api/home',{method:'POST'}); }
-function wave(){ if(confirm('Starte Winken?')) api('/api/program/wave',{method:'POST'}); }
-function pick(){ if(confirm('Starte Pick & Place?')) api('/api/program/pickplace',{method:'POST'}); }
-function emergency(){ if(confirm('NOT-AUS?')) api('/api/emergency',{method:'POST'}); }
+window.moveHome = function(j){ const h = j==='hand'?0:90; document.getElementById(j+'Slider').value = h; document.getElementById(j+'Val').textContent = h+'°'; api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:h})}); }
+window.test = function(j){ api('/api/test/'+j,{method:'POST'}); }
+window.moveAllHome = function(){ api('/api/home',{method:'POST'}); }
+window.wave = function(){ if(confirm('Starte Winken?')) api('/api/program/wave',{method:'POST'}); }
+window.pick = function(){ if(confirm('Starte Pick & Place?')) api('/api/program/pickplace',{method:'POST'}); }
+window.emergency = function(){ if(confirm('NOT-AUS?')) api('/api/emergency',{method:'POST'}); }
 
 /* ---------- Tabs ---------- */
 function showTab(name){
@@ -156,13 +166,36 @@ function buildCalibUI(){
   // simulation config card
   const simCard = document.createElement('div');
   simCard.className = 'card';
+  // axes controls (base + per-joint)
+  const axes = SIM.axes || { base: 'z', shoulder: 'y', elbow: 'y', wrist: 'y', hand: 'y' };
   simCard.innerHTML = `
     <h3>Simulation</h3>
-    <div class="field"><label>Shoulder</label><input type="number" id="sim-shoulder" value="${SIM.lengths.shoulder}"></div>
+    <div class="field"><label>Shoulder (mm)</label><input type="number" id="sim-shoulder" value="${SIM.lengths.shoulder}"></div>
     <div class="field"><label>Elbow</label><input type="number" id="sim-elbow" value="${SIM.lengths.elbow}"></div>
     <div class="field"><label>Wrist</label><input type="number" id="sim-wrist" value="${SIM.lengths.wrist}"></div>
     <div class="field"><label>Hand</label><input type="number" id="sim-hand" value="${SIM.lengths.hand}"></div>
     <div class="field"><label>Scale</label><input type="number" step="0.1" id="sim-scale" value="${SIM.scale}"></div>
+    <div style="margin-top:8px"><strong>Angle Offsets (deg)</strong></div>
+    <div class="field"><label>Shoulder offset</label><input type="number" id="sim-offset-shoulder" value="${(SIM.offsets && SIM.offsets.shoulder) ? SIM.offsets.shoulder : 0}"></div>
+    <div class="field"><label>Elbow offset</label><input type="number" id="sim-offset-elbow" value="${(SIM.offsets && SIM.offsets.elbow) ? SIM.offsets.elbow : 0}"></div>
+    <div class="field"><label>Wrist offset</label><input type="number" id="sim-offset-wrist" value="${(SIM.offsets && SIM.offsets.wrist) ? SIM.offsets.wrist : 0}"></div>
+    <div class="field"><label>Hand offset</label><input type="number" id="sim-offset-hand" value="${(SIM.offsets && SIM.offsets.hand) ? SIM.offsets.hand : 0}"></div>
+    <div style="margin-top:8px"><strong>Axis Mapping</strong></div>
+    <div class="field"><label>Base (C)</label>
+      <select id="sim-axis-base"><option value="z" ${axes.base==='z'?'selected':''}>C (Z)</option><option value="y" ${axes.base==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.base==='x'?'selected':''}>A (X)</option></select>
+    </div>
+    <div class="field"><label>Shoulder</label>
+      <select id="sim-axis-shoulder"><option value="y" ${axes.shoulder==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.shoulder==='x'?'selected':''}>A (X)</option></select>  
+    </div>
+    <div class="field"><label>Elbow</label>
+      <select id="sim-axis-elbow"><option value="y" ${axes.elbow==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.elbow==='x'?'selected':''}>A (X)</option></select>
+    </div>
+    <div class="field"><label>Wrist</label>
+      <select id="sim-axis-wrist"><option value="y" ${axes.wrist==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.wrist==='x'?'selected':''}>A (X)</option></select>
+    </div>
+    <div class="field"><label>Hand</label>
+      <select id="sim-axis-hand"><option value="y" ${axes.hand==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.hand==='x'?'selected':''}>A (X)</option></select>
+    </div>
     <div style="margin-top:8px" class="actions">
       <button onclick="applySimConfig(false)">Apply</button>
       <button onclick="applySimConfig(true)">Apply + Save</button>
@@ -248,9 +281,25 @@ async function applySimConfig(save=false){
     hand: parseInt(document.getElementById('sim-hand').value)
   };
   const scale = parseFloat(document.getElementById('sim-scale').value || 1.0);
+  const axes = {
+    base: document.getElementById('sim-axis-base').value,
+    shoulder: document.getElementById('sim-axis-shoulder').value,
+    elbow: document.getElementById('sim-axis-elbow').value,
+    wrist: document.getElementById('sim-axis-wrist').value,
+    hand: document.getElementById('sim-axis-hand').value
+  };
+  const offsets = {
+    shoulder: parseInt(document.getElementById('sim-offset-shoulder').value || 0),
+    elbow: parseInt(document.getElementById('sim-offset-elbow').value || 0),
+    wrist: parseInt(document.getElementById('sim-offset-wrist').value || 0),
+    hand: parseInt(document.getElementById('sim-offset-hand').value || 0)
+  };
   const res = await api('/api/simconfig', {method:'POST', body: JSON.stringify({lengths: lengths, scale: scale, save: save})});
   if(res && res.success){
-    SIM = res.sim;
+    // POST axes and offsets so backend picks up new mappings
+    await api('/api/simconfig', {method:'POST', body: JSON.stringify({axes: axes, offsets: offsets, save: save})});
+    const updated = await api('/api/simconfig',{method:'GET'});
+    SIM = updated;
     buildCalibUI();
   } else {
     alert('Fehler beim Anwenden der Sim-Konfiguration');
@@ -263,6 +312,8 @@ async function saveSimConfig(save){
 
 /* ---------- 2D Simulation with trace, zoom, snapshot ---------- */
 let latestPositions = { base:90, shoulder:90, elbow:90, wrist:90, hand:0 };
+let currentPositions = Object.assign({}, latestPositions);
+let targetPositions = Object.assign({}, latestPositions);
 let simZoom = 1.0;
 let trace = [];
 const TRACE_MAX = 200;
@@ -271,6 +322,9 @@ function degToRad(d){ return d * Math.PI / 180; }
 function angleToRadForLink(a){ return degToRad(a - 90); }
 
 function drawArm(positions){
+  try{
+  
+  
   const c = document.getElementById('armCanvas');
   if(!c) return;
   const ctx = c.getContext('2d');
@@ -280,40 +334,45 @@ function drawArm(positions){
   ctx.fillStyle = '#0b1220';
   ctx.fillRect(0,0,width,height);
 
-  const sim = SIM || {lengths:{shoulder:90,elbow:70,wrist:50,hand:20}, origin:{x:width/2,y:height-60}};
+  const sim = SIM || {lengths:{shoulder:90,elbow:70,wrist:50,hand:20}, origin:{x:width/2,y:height-60}, scale:1.0};
   const L = sim.lengths;
-  const ox = sim.origin.x; const oy = sim.origin.y;
+  const ox = (typeof sim.origin.x === 'number') ? sim.origin.x : Math.floor(width/2);
+  const oy = (typeof sim.origin.y === 'number') ? sim.origin.y : Math.floor(height*0.78);
+  const scale = (sim.scale || 1.0) * simZoom;
 
-  // compute local positions
-  const a1 = angleToRadForLink(positions.shoulder || 90);
-  const relA2 = angleToRadForLink(positions.elbow) - angleToRadForLink(90);
-  const relA3 = angleToRadForLink(positions.wrist) - angleToRadForLink(90);
-  const p1 = { x: ox + L.shoulder * simZoom * Math.cos(a1), y: oy + L.shoulder * simZoom * Math.sin(a1) };
-  const a2_total = a1 + relA2;
-  const p2 = { x: p1.x + L.elbow * simZoom * Math.cos(a2_total), y: p1.y + L.elbow * simZoom * Math.sin(a2_total) };
-  const a3_total = a2_total + relA3;
-  const p3 = { x: p2.x + L.wrist * simZoom * Math.cos(a3_total), y: p2.y + L.wrist * simZoom * Math.sin(a3_total) };
-  const p4 = { x: p3.x + L.hand * simZoom * Math.cos(a3_total), y: p3.y + L.hand * simZoom * Math.sin(a3_total) };
+  // 3D FK (base around Z, shoulder/elbow/wrist around Y, hand around X)
+  function rotY(theta, v){ const c=Math.cos(theta), s=Math.sin(theta); return {x: v.x*c + v.z*s, y: v.y, z: -v.x*s + v.z*c}; }
+  function rotZ(theta, v){ const c=Math.cos(theta), s=Math.sin(theta); return {x: v.x*c - v.y*s, y: v.x*s + v.y*c, z: v.z}; }
+  function add(a,b){ return {x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}; }
 
-  // rotate around origin by base angle
-  const baseRad = angleToRadForLink(positions.base || 90);
-  function rotate(pt){
-    const dx = pt.x - ox; const dy = pt.y - oy;
-    return { x: ox + (dx*Math.cos(baseRad)-dy*Math.sin(baseRad)), y: oy + (dx*Math.sin(baseRad)+dy*Math.cos(baseRad)) };
-  }
-  const rp0 = rotate({x:ox,y:oy});
-  const rp1 = rotate(p1); const rp2 = rotate(p2); const rp3 = rotate(p3); const rp4 = rotate(p4);
+  // apply offsets from SIM if present
+  const offs = SIM.offsets || {shoulder:0, elbow:0, wrist:0, hand:0};
+  const sh = degToRad((positions.shoulder||90) + (offs.shoulder||0) - 90);
+  const el = degToRad((positions.elbow||90) + (offs.elbow||0) - 90);
+  const wr = degToRad((positions.wrist||90) + (offs.wrist||0) - 90);
+  const base = degToRad((positions.base||90) - 90);
 
-  // draw trace
-  if(trace.length>0){
-    ctx.strokeStyle = 'rgba(99,102,241,0.6)'; ctx.lineWidth = 2; ctx.beginPath();
-    for(let i=0;i<trace.length;i++){
-      const t = trace[i]; if(i===0) ctx.moveTo(t.x,t.y); else ctx.lineTo(t.x,t.y);
-    }
-    ctx.stroke();
-  }
+  const p0 = {x:0,y:0,z:0};
+  // shoulder: at 90° (sh=0) should point along +Z, so initial vector along Z
+  const p1 = rotY(sh, {x: 0, y:0, z: L.shoulder});
+  // elbow & wrist: at 90° (el=0, wr=0) should point along +X, so initial vectors along X
+  const p2 = add(p1, rotY(sh+el, {x: L.elbow, y:0, z:0}));
+  const p3 = add(p2, rotY(sh+el+wr, {x: L.wrist, y:0, z:0}));
+  const p4 = add(p3, rotY(sh+el+wr, {x: L.hand, y:0, z:0}));
 
-  // draw links
+  // apply base rotation around Z and scale
+  function toCanvas(pt){ const r = rotZ(base, pt); return { x: ox + r.x*scale, y: oy - r.z*scale }; }
+
+  const rp0 = toCanvas(p0);
+  const rp1 = toCanvas(p1);
+  const rp2 = toCanvas(p2);
+  const rp3 = toCanvas(p3);
+  const rp4 = toCanvas(p4);
+
+  // draw trace (side end-effector trace)
+  if(trace.length>0){ ctx.strokeStyle = 'rgba(99,102,241,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); for(let i=0;i<trace.length;i++){ const t = trace[i]; if(i===0) ctx.moveTo(t.x,t.y); else ctx.lineTo(t.x,t.y);} ctx.stroke(); }
+
+  // draw links (side view uses x vs z mapping already applied)
   ctx.lineWidth = 8; ctx.lineCap='round';
   ctx.strokeStyle = '#60a5fa'; ctx.beginPath(); ctx.moveTo(rp0.x,rp0.y); ctx.lineTo(rp1.x,rp1.y); ctx.stroke();
   ctx.strokeStyle = '#93c5fd'; ctx.beginPath(); ctx.moveTo(rp1.x,rp1.y); ctx.lineTo(rp2.x,rp2.y); ctx.stroke();
@@ -326,10 +385,73 @@ function drawArm(positions){
   ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.arc(rp4.x,rp4.y,5,0,Math.PI*2); ctx.fill();
 
   // labels
-  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='12px Arial'; ctx.fillText('B:'+positions.base+'°',8,18);
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='12px Arial'; ctx.fillText('C:'+positions.base+'°',8,18);
 
   // add to trace
   trace.push({x:rp4.x,y:rp4.y}); if(trace.length>TRACE_MAX) trace.shift();
+  // also draw top view from same FK
+  try{ drawTopFromFK([p0,p1,p2,p3,p4], positions); }catch(e){}
+
+  // draw coordinate axes at base (A/B/C -> X/Y/Z)
+  function drawAxes(){
+    const ax = 36*scale; const ay = 36*scale; ctx.lineWidth=2;
+    // X (A) - right
+    ctx.strokeStyle='#ef4444'; ctx.beginPath(); ctx.moveTo(rp0.x, rp0.y); ctx.lineTo(rp0.x+ax, rp0.y); ctx.stroke(); ctx.fillStyle='#ef4444'; ctx.fillText('A', rp0.x+ax+6, rp0.y+4);
+    // Y (B) - down
+    ctx.strokeStyle='#60a5fa'; ctx.beginPath(); ctx.moveTo(rp0.x, rp0.y); ctx.lineTo(rp0.x, rp0.y+ay); ctx.stroke(); ctx.fillStyle='#60a5fa'; ctx.fillText('B', rp0.x+4, rp0.y+ay+12);
+    // Z (C) - up (draw as vertical arrow)
+    ctx.strokeStyle='#f59e0b'; ctx.beginPath(); ctx.moveTo(rp0.x-ax*0.5, rp0.y+ay*0.2); ctx.lineTo(rp0.x-ax*0.5, rp0.y-ay); ctx.stroke(); ctx.fillStyle='#f59e0b'; ctx.fillText('C', rp0.x-ax*0.5-10, rp0.y-ay-4);
+  }
+  drawAxes();
+
+  // draw hand orientation marker (use hand offset)
+  const handDeg = ((positions.hand||0) + (offs.hand||0) - 90);
+  const handRad = degToRad(handDeg);
+  // draw a small orientation line on side view (rotate in screen plane)
+  ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(rp4.x, rp4.y); ctx.lineTo(rp4.x + 18*Math.cos(handRad), rp4.y + 18*Math.sin(handRad)); ctx.stroke();
+  // end try
+  }catch(e){
+    console.error('drawArm error', e);
+    const s = document.getElementById('simStatus'); if(s) s.textContent = 'Sim error: '+(e && e.message? e.message : e);
+  }
+}
+
+// animation loop: interpolate currentPositions -> targetPositions
+function animate(){
+  const lerp = (a,b,t) => a + (b-a)*t;
+  let changed = false;
+  for(const k of Object.keys(targetPositions)){
+    const cur = currentPositions[k] || 0;
+    const tgt = targetPositions[k] || 0;
+    const next = Math.abs(tgt-cur) < 0.5 ? tgt : lerp(cur, tgt, 0.22);
+    if(Math.abs(next-cur) > 0.01) changed = true;
+    currentPositions[k] = next;
+  }
+  drawArm(currentPositions);
+  // update sim status
+  try{ const s = document.getElementById('simStatus'); if(s) s.textContent = 'Sim running — pos: B='+Math.round(currentPositions.base||0)+' S='+Math.round(currentPositions.shoulder||0)+' E='+Math.round(currentPositions.elbow||0); }catch(e){}
+  requestAnimationFrame(animate);
+}
+
+function drawTopFromFK(points3d, positions){
+  const c = document.getElementById('topCanvas'); if(!c) return; const ctx = c.getContext('2d'); const w=c.width; const h=c.height; ctx.clearRect(0,0,w,h); ctx.fillStyle='#071029'; ctx.fillRect(0,0,w,h);
+  const sim = SIM || {lengths:{shoulder:90,elbow:70,wrist:50,hand:20}, origin:{x:200,y:300}, scale:1.0};
+  const scale = (sim.scale || 1.0) * simZoom * 0.5; // smaller scale for top view
+  const cx = w/2; const cy = h/2;
+  // apply base rotation (points are computed before base rotation)
+  const base = degToRad((positions.base||90) - 90);
+  function rotZ(theta, v){ const c=Math.cos(theta), s=Math.sin(theta); return {x: v.x*c - v.y*s, y: v.x*s + v.y*c, z: v.z}; }
+  const pts = points3d.map(p => rotZ(base, p));
+  // map to top canvas (X -> right, Y -> down)
+  const screen = pts.map(p => ({ x: cx + p.x*scale, y: cy + p.y*scale }));
+
+  // draw base circle
+  ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(cx,cy, Math.min(w,h)/2 - 8, 0, Math.PI*2); ctx.stroke();
+  // draw projection of links
+  ctx.lineWidth = 4; ctx.strokeStyle = '#60a5fa'; ctx.beginPath(); ctx.moveTo(screen[0].x, screen[0].y); for(let i=1;i<screen.length;i++){ ctx.lineTo(screen[i].x, screen[i].y); } ctx.stroke();
+  // joints
+  for(let i=0;i<screen.length;i++){ ctx.fillStyle = i===screen.length-1? '#60a5fa':'#fff'; ctx.beginPath(); ctx.arc(screen[i].x, screen[i].y, i===0?6:5,0,Math.PI*2); ctx.fill(); }
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='11px Arial'; ctx.fillText('C:'+positions.base+'°',6,12);
 }
 
 function zoom(f){ simZoom *= f; }
@@ -343,17 +465,18 @@ async function poll(){
     const s = await api('/api/status',{method:'GET'});
     document.getElementById('statusText').textContent = s.hardware_available? 'Hardware OK':'Simulation';
     latestPositions = Object.assign({}, latestPositions, s.positions || {});
+    // set targets instead of jumping
+    targetPositions = Object.assign({}, targetPositions, s.positions || {});
     for(const [k,v] of Object.entries(s.positions||{})){
       const el = document.getElementById(k+'Slider');
       if(document.activeElement !== el){ el.value = v; document.getElementById(k+'Val').textContent = v+'°'; }
     }
-    drawArm(latestPositions);
   }catch(e){}
   setTimeout(poll, 400);
 }
 
 /* ---------- Init ---------- */
-document.addEventListener('DOMContentLoaded', async ()=>{ await reloadCalibration(); poll(); });
+document.addEventListener('DOMContentLoaded', async ()=>{ await reloadCalibration(); poll(); animate(); });
 </script>
 </body>
 </html>
