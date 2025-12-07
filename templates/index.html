@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ meta.app_name }} - {{ meta.version }}</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;padding:16px}
+    .card{background:white;padding:16px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.06);margin-bottom:12px}
+    input[type=range]{width:100%}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>{{ meta.app_name }}</h1>
+    <div id="status">Status: <span id="statusText">--</span></div>
+  </div>
+
+  {% for name, channel in servo_map.items() %}
+  <div class="card">
+    <div style="display:flex;justify-content:space-between"><div><strong>{{ name|title }}</strong></div><div>Kanal {{ channel }}</div></div>
+    <input type="range" id="{{ name }}Slider" min="0" max="180" value="{{ positions[name] }}" oninput="onSlide('{{ name }}', this.value)">
+    <div style="display:flex;justify-content:space-between;margin-top:6px"><div>Aktuell:</div><div id="{{ name }}Val">{{ positions[name] }}°</div></div>
+    <div style="margin-top:8px" class="actions"><button onclick="moveHome('{{ name }}')">Home</button><button onclick="test('{{ name }}')">Test</button></div>
+  </div>
+  {% endfor %}
+
+  <div class="card actions">
+    <button onclick="moveAllHome()">Alle Home</button>
+    <button onclick="wave()">Winken</button>
+    <button onclick="pick()">Pick & Place</button>
+    <button style="background:#ef4444;color:white" onclick="emergency()">NOT-AUS</button>
+  </div>
+
+<script>
+async function api(path, opts){
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts));
+  return r.json();
+}
+function onSlide(j, v){ document.getElementById(j+'Val').textContent = v+'°'; api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:parseInt(v)})}); }
+function moveHome(j){ const h = j==='hand'?0:90; document.getElementById(j+'Slider').value = h; document.getElementById(j+'Val').textContent = h+'°'; api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:h})}); }
+function test(j){ api('/api/test/'+j,{method:'POST'}); }
+function moveAllHome(){ api('/api/home',{method:'POST'}); }
+function wave(){ if(confirm('Starte Winken?')) api('/api/program/wave',{method:'POST'}); }
+function pick(){ if(confirm('Starte Pick & Place?')) api('/api/program/pickplace',{method:'POST'}); }
+function emergency(){ if(confirm('NOT-AUS?')) api('/api/emergency',{method:'POST'}); }
+
+async function poll(){ try{ const s = await api('/api/status',{method:'GET'}); document.getElementById('statusText').textContent = s.hardware_available? 'Hardware OK':'Simulation'; for(const [k,v] of Object.entries(s.positions)){ const el = document.getElementById(k+'Slider'); if(document.activeElement !== el){ el.value = v; document.getElementById(k+'Val').textContent = v+'°'; } } }catch(e){} finally{ setTimeout(poll,1000); } }
+poll();
+</script>
+</body>
+</html>

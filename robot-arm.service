@@ -1,0 +1,14 @@
+[Unit]
+Description=Robot Arm Control Web UI
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/robot-arm
+ExecStart=/usr/bin/python3 /home/pi/robot-arm/app.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
