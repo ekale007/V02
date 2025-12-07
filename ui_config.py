@@ -20,5 +20,12 @@ CURRENT_POSITIONS = {
 
 UI_META = {
     "app_name": "Robot Arm Control",
-    "version": "1.0",
+    "version": "1.1",
+}
+
+# Default simulation configuration (can be overridden by sim.json)
+SIM_CONFIG = {
+    "lengths": {"shoulder": 90, "elbow": 70, "wrist": 50, "hand": 20},
+    "origin": {"x": 210, "y": 260},
+    "scale": 1.0
 }

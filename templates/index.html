@@ -19,7 +19,7 @@
     button.small{padding:6px 8px}
     /* Simulation styles */
     .sim-wrapper{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
-    #armCanvas{background:#111827;border-radius:6px;box-shadow:inset 0 0 20px rgba(255,255,255,0.02);display:block}
+    #armCanvas{background:#0b1220;border-radius:6px;box-shadow:inset 0 0 20px rgba(255,255,255,0.02);display:block}
     .sim-legend{color:#f9fafb;font-size:0.9rem}
   </style>
 </head>
@@ -37,10 +37,17 @@
   <div id="panel-control">
     <!-- Simulation + Controls -->
     <div class="card sim-wrapper">
-      <div style="flex: 0 0 420px;">
-        <canvas id="armCanvas" width="420" height="320"></canvas>
+      <div style="flex: 0 0 520px;">
+        <canvas id="armCanvas" width="520" height="420"></canvas>
         <div style="margin-top:8px;color:#374151;font-size:0.9rem">
           <span class="sim-legend">2D-Simulation (Seitenansicht). Basis-Rotation wird als Drehung angewendet.</span>
+          <div style="margin-top:6px">
+            <button onclick="zoom(1.2)">Zoom In</button>
+            <button onclick="zoom(1/1.2)">Zoom Out</button>
+            <button onclick="resetView()">Reset View</button>
+            <button onclick="clearTrace()">Clear Trace</button>
+            <button onclick="exportSnapshot()">Snapshot</button>
+          </div>
         </div>
       </div>
 
@@ -66,11 +73,12 @@
 
   <div id="panel-calibration" style="display:none">
     <div class="card">
-      <h2>Calibration</h2>
-      <p class="muted">Hier kannst du Limits, Schrittweite und Home-Positionen pro Servo einstellen und testen. Änderungen können temporär getestet werden. Zum dauerhaften Speichern auf <strong>Save</strong> klicken.</p>
+      <h2>Calibration & Simulation</h2>
+      <p class="muted">Hier kannst du Limits, Schrittweite, Home-Positionen und Sim-Parameter (Link-Längen) einstellen.</p>
       <div id="calib-grid" class="grid"></div>
       <div style="margin-top:12px">
-        <button onclick="saveCalibration()">Save</button>
+        <button onclick="saveCalibration()">Save Calibration</button>
+        <button onclick="saveSimConfig(true)">Save Sim Config</button>
         <button onclick="reloadCalibration()">Reload</button>
       </div>
     </div>
@@ -103,8 +111,9 @@ function showTab(name){
   document.getElementById('tab-calib').classList.toggle('active', name==='calibration');
 }
 
-/* ---------- Calibration UI (unchanged, same as before) ---------- */
+/* ---------- Calibration UI ---------- */
 let CALIB = null;
+let SIM = null;
 function buildCalibUI(){
   const container = document.getElementById('calib-grid');
   container.innerHTML = '';
@@ -135,12 +144,31 @@ function buildCalibUI(){
     `;
     container.appendChild(card);
   }
+
+  // simulation config card
+  const simCard = document.createElement('div');
+  simCard.className = 'card';
+  simCard.innerHTML = `
+    <h3>Simulation</h3>
+    <div class="field"><label>Shoulder</label><input type="number" id="sim-shoulder" value="${SIM.lengths.shoulder}"></div>
+    <div class="field"><label>Elbow</label><input type="number" id="sim-elbow" value="${SIM.lengths.elbow}"></div>
+    <div class="field"><label>Wrist</label><input type="number" id="sim-wrist" value="${SIM.lengths.wrist}"></div>
+    <div class="field"><label>Hand</label><input type="number" id="sim-hand" value="${SIM.lengths.hand}"></div>
+    <div class="field"><label>Scale</label><input type="number" step="0.1" id="sim-scale" value="${SIM.scale}"></div>
+    <div style="margin-top:8px" class="actions">
+      <button onclick="applySimConfig(false)">Apply</button>
+      <button onclick="applySimConfig(true)">Apply + Save</button>
+    </div>
+  `;
+  container.appendChild(simCard);
 }
 
 async function reloadCalibration(){
   try{
     const data = await api('/api/calibration',{method:'GET'});
     CALIB = data;
+    const simdata = await api('/api/simconfig',{method:'GET'});
+    SIM = simdata;
     buildCalibUI();
   }catch(e){
     console.error(e);
@@ -201,143 +229,102 @@ async function stepMove(joint, dir){
   await calibMove(joint, next);
 }
 
-/* ---------- 2D Simulation ---------- */
-/* Simple planar side-view:
-   - Convert servo angles (0..180, home=90) to radians: rad = (angle-90) * deg2rad
-   - segment lengths in px (visual, not physical). Base rotation rotates entire arm around origin.
-*/
-const SIM_CONFIG = {
-  lengths: { shoulder: 90, elbow: 70, wrist: 50, hand: 20 }, // px
-  origin: { x: 210, y: 260 } // canvas origin (shoulder pivot)
-};
+async function applySimConfig(save=false){
+  const lengths = {
+    shoulder: parseInt(document.getElementById('sim-shoulder').value),
+    elbow: parseInt(document.getElementById('sim-elbow').value),
+    wrist: parseInt(document.getElementById('sim-wrist').value),
+    hand: parseInt(document.getElementById('sim-hand').value)
+  };
+  const scale = parseFloat(document.getElementById('sim-scale').value || 1.0);
+  const res = await api('/api/simconfig', {method:'POST', body: JSON.stringify({lengths: lengths, scale: scale, save: save})});
+  if(res && res.success){
+    SIM = res.sim;
+    buildCalibUI();
+  } else {
+    alert('Fehler beim Anwenden der Sim-Konfiguration');
+  }
+}
+
+async function saveSimConfig(save){
+  await applySimConfig(save);
+}
+
+/* ---------- 2D Simulation with trace, zoom, snapshot ---------- */
 let latestPositions = { base:90, shoulder:90, elbow:90, wrist:90, hand:0 };
+let simZoom = 1.0;
+let trace = [];
+const TRACE_MAX = 200;
 
 function degToRad(d){ return d * Math.PI / 180; }
-function angleToRadForLink(a){ return degToRad(a - 90); } // map 90 -> 0
+function angleToRadForLink(a){ return degToRad(a - 90); }
 
 function drawArm(positions){
   const c = document.getElementById('armCanvas');
   if(!c) return;
   const ctx = c.getContext('2d');
-  // clear
-  ctx.clearRect(0,0,c.width,c.height);
-  // background/grid
+  const width = c.width; const height = c.height;
+  ctx.clearRect(0,0,width,height);
+  // background
   ctx.fillStyle = '#0b1220';
-  ctx.fillRect(0,0,c.width,c.height);
-  // draw ground/reference line
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, SIM_CONFIG.origin.y + 10);
-  ctx.lineTo(c.width, SIM_CONFIG.origin.y + 10);
-  ctx.stroke();
+  ctx.fillRect(0,0,width,height);
 
-  // compute link angles
-  const baseRad = angleToRadForLink(positions.base || 90); // rotate whole arm
+  const sim = SIM || {lengths:{shoulder:90,elbow:70,wrist:50,hand:20}, origin:{x:width/2,y:height-60}};
+  const L = sim.lengths;
+  const ox = sim.origin.x; const oy = sim.origin.y;
+
+  // compute local positions
   const a1 = angleToRadForLink(positions.shoulder || 90);
-  const a2 = angleToRadForLink(positions.elbow || 90);
-  const a3 = angleToRadForLink(positions.wrist || 90);
-  // relative accumulation: total angle for each link = a1 + (a2-0?) -> use additive for demo
-  const L = SIM_CONFIG.lengths;
-  // shoulder pivot (origin)
-  let x0 = SIM_CONFIG.origin.x;
-  let y0 = SIM_CONFIG.origin.y;
-  // compute joint positions in local coordinates (before base rotation)
-  const p1 = {
-    x: x0 + L.shoulder * Math.cos(a1),
-    y: y0 + L.shoulder * Math.sin(a1)
-  };
-  const a12 = a1 + a2 - angleToRadForLink(90); // subtract 90-mapping to treat elbow as relative; adjust so neutral behaves
-  // simpler approach: treat elbow and wrist as additive relative to previous link with offsets zeroed at 90
   const relA2 = angleToRadForLink(positions.elbow) - angleToRadForLink(90);
   const relA3 = angleToRadForLink(positions.wrist) - angleToRadForLink(90);
+  const p1 = { x: ox + L.shoulder * simZoom * Math.cos(a1), y: oy + L.shoulder * simZoom * Math.sin(a1) };
   const a2_total = a1 + relA2;
-  const p2 = {
-    x: p1.x + L.elbow * Math.cos(a2_total),
-    y: p1.y + L.elbow * Math.sin(a2_total)
-  };
+  const p2 = { x: p1.x + L.elbow * simZoom * Math.cos(a2_total), y: p1.y + L.elbow * simZoom * Math.sin(a2_total) };
   const a3_total = a2_total + relA3;
-  const p3 = {
-    x: p2.x + L.wrist * Math.cos(a3_total),
-    y: p2.y + L.wrist * Math.sin(a3_total)
-  };
-  const p4 = {
-    x: p3.x + L.hand * Math.cos(a3_total),
-    y: p3.y + L.hand * Math.sin(a3_total)
-  };
+  const p3 = { x: p2.x + L.wrist * simZoom * Math.cos(a3_total), y: p2.y + L.wrist * simZoom * Math.sin(a3_total) };
+  const p4 = { x: p3.x + L.hand * simZoom * Math.cos(a3_total), y: p3.y + L.hand * simZoom * Math.sin(a3_total) };
 
-  // apply base rotation around origin (x0,y0) by baseRad
-  function rotateAroundOrigin(px, py, ox, oy, rot){
-    const dx = px - ox;
-    const dy = py - oy;
-    const rx = dx * Math.cos(rot) - dy * Math.sin(rot);
-    const ry = dx * Math.sin(rot) + dy * Math.cos(rot);
-    return { x: ox + rx, y: oy + ry };
+  // rotate around origin by base angle
+  const baseRad = angleToRadForLink(positions.base || 90);
+  function rotate(pt){
+    const dx = pt.x - ox; const dy = pt.y - oy;
+    return { x: ox + (dx*Math.cos(baseRad)-dy*Math.sin(baseRad)), y: oy + (dx*Math.sin(baseRad)+dy*Math.cos(baseRad)) };
   }
-  const p0r = rotateAroundOrigin(x0,y0,x0,y0,baseRad);
-  const p1r = rotateAroundOrigin(p1.x,p1.y,x0,y0,baseRad);
-  const p2r = rotateAroundOrigin(p2.x,p2.y,x0,y0,baseRad);
-  const p3r = rotateAroundOrigin(p3.x,p3.y,x0,y0,baseRad);
-  const p4r = rotateAroundOrigin(p4.x,p4.y,x0,y0,baseRad);
+  const rp0 = rotate({x:ox,y:oy});
+  const rp1 = rotate(p1); const rp2 = rotate(p2); const rp3 = rotate(p3); const rp4 = rotate(p4);
 
-  // draw links
-  ctx.lineWidth = 8;
-  ctx.lineCap = 'round';
-  // shoulder
-  ctx.strokeStyle = '#60a5fa';
-  ctx.beginPath();
-  ctx.moveTo(p0r.x, p0r.y);
-  ctx.lineTo(p1r.x, p1r.y);
-  ctx.stroke();
-  // elbow
-  ctx.strokeStyle = '#93c5fd';
-  ctx.beginPath();
-  ctx.moveTo(p1r.x, p1r.y);
-  ctx.lineTo(p2r.x, p2r.y);
-  ctx.stroke();
-  // wrist
-  ctx.strokeStyle = '#7c3aed';
-  ctx.beginPath();
-  ctx.moveTo(p2r.x, p2r.y);
-  ctx.lineTo(p3r.x, p3r.y);
-  ctx.stroke();
-  // hand
-  ctx.strokeStyle = '#f59e0b';
-  ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.moveTo(p3r.x, p3r.y);
-  ctx.lineTo(p4r.x, p4r.y);
-  ctx.stroke();
-
-  // draw joints as circles
-  function jointDot(pt, color){
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 8, 0, Math.PI*2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = 2;
+  // draw trace
+  if(trace.length>0){
+    ctx.strokeStyle = 'rgba(99,102,241,0.6)'; ctx.lineWidth = 2; ctx.beginPath();
+    for(let i=0;i<trace.length;i++){
+      const t = trace[i]; if(i===0) ctx.moveTo(t.x,t.y); else ctx.lineTo(t.x,t.y);
+    }
     ctx.stroke();
   }
-  jointDot(p0r, '#111827'); // base pivot (invisible)
-  jointDot(p1r, '#ffffff'); // shoulder
-  jointDot(p2r, '#ffffff'); // elbow
-  jointDot(p3r, '#ffffff'); // wrist
-  // gripper tip
-  ctx.fillStyle = '#ef4444';
-  ctx.beginPath();
-  ctx.arc(p4r.x, p4r.y, 5, 0, Math.PI*2);
-  ctx.fill();
 
-  // draw small labels (angles)
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.font = '12px Arial';
-  ctx.fillText('B:' + (positions.base||0) + '°', 8, 18);
-  ctx.fillText('S:' + (positions.shoulder||0) + '°', 8, 36);
-  ctx.fillText('E:' + (positions.elbow||0) + '°', 8, 54);
-  ctx.fillText('W:' + (positions.wrist||0) + '°', 8, 72);
-  ctx.fillText('H:' + (positions.hand||0) + '°', 8, 90);
+  // draw links
+  ctx.lineWidth = 8; ctx.lineCap='round';
+  ctx.strokeStyle = '#60a5fa'; ctx.beginPath(); ctx.moveTo(rp0.x,rp0.y); ctx.lineTo(rp1.x,rp1.y); ctx.stroke();
+  ctx.strokeStyle = '#93c5fd'; ctx.beginPath(); ctx.moveTo(rp1.x,rp1.y); ctx.lineTo(rp2.x,rp2.y); ctx.stroke();
+  ctx.strokeStyle = '#7c3aed'; ctx.beginPath(); ctx.moveTo(rp2.x,rp2.y); ctx.lineTo(rp3.x,rp3.y); ctx.stroke();
+  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth=6; ctx.beginPath(); ctx.moveTo(rp3.x,rp3.y); ctx.lineTo(rp4.x,rp4.y); ctx.stroke();
+
+  // joints
+  function jointDot(pt,color){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(pt.x,pt.y,8,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=2; ctx.stroke(); }
+  jointDot(rp0,'#111827'); jointDot(rp1,'#ffffff'); jointDot(rp2,'#ffffff'); jointDot(rp3,'#ffffff');
+  ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.arc(rp4.x,rp4.y,5,0,Math.PI*2); ctx.fill();
+
+  // labels
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='12px Arial'; ctx.fillText('B:'+positions.base+'°',8,18);
+
+  // add to trace
+  trace.push({x:rp4.x,y:rp4.y}); if(trace.length>TRACE_MAX) trace.shift();
 }
+
+function zoom(f){ simZoom *= f; }
+function resetView(){ simZoom = SIM.scale || 1.0; trace = []; }
+function clearTrace(){ trace = []; }
+function exportSnapshot(){ const c=document.getElementById('armCanvas'); const data=c.toDataURL('image/png'); const w=window.open('about:blank','_blank'); w.document.write('<img src="'+data+'"/>'); }
 
 /* ---------- Polling & sync ---------- */
 async function poll(){
@@ -345,27 +332,17 @@ async function poll(){
     const s = await api('/api/status',{method:'GET'});
     document.getElementById('statusText').textContent = s.hardware_available? 'Hardware OK':'Simulation';
     latestPositions = Object.assign({}, latestPositions, s.positions || {});
-    // update sliders (only if not actively used)
     for(const [k,v] of Object.entries(s.positions||{})){
       const el = document.getElementById(k+'Slider');
-      if(document.activeElement !== el){
-        el.value = v;
-        document.getElementById(k+'Val').textContent = v+'°';
-      }
+      if(document.activeElement !== el){ el.value = v; document.getElementById(k+'Val').textContent = v+'°'; }
     }
-    // draw simulation
     drawArm(latestPositions);
-  }catch(e){
-    // ignore
-  }
-  setTimeout(poll, 500);
+  }catch(e){}
+  setTimeout(poll, 400);
 }
 
 /* ---------- Init ---------- */
-document.addEventListener('DOMContentLoaded', async ()=>{
-  await reloadCalibration();
-  poll();
-});
+document.addEventListener('DOMContentLoaded', async ()=>{ await reloadCalibration(); poll(); });
 </script>
 </body>
 </html>
