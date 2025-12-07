@@ -50,7 +50,8 @@ def default_calib():
     limits = { j: [0, 180] for j in cfg.SERVO_MAP.keys() }
     home = dict(cfg.CURRENT_POSITIONS)
     step = { j: 5 for j in cfg.SERVO_MAP.keys() }
-    return {"limits": limits, "home": home, "step": step}
+    pulse = { j: {"min_pulse": 500, "max_pulse": 2500} for j in cfg.SERVO_MAP.keys() }
+    return {"limits": limits, "home": home, "step": step, "pulse": pulse}
 
 def load_calib():
     if os.path.exists(CALIB_FILE):
@@ -175,6 +176,24 @@ def api_calibration_update():
         CALIB['limits'][joint] = [lo, hi]
         CALIB['step'][joint] = step
         CALIB['home'][joint] = home
+
+        # pulse fields (optional)
+        try:
+            pmin = data.get('pulse_min')
+            pmax = data.get('pulse_max')
+            if pmin is not None or pmax is not None:
+                # ensure pulse mapping exists
+                if 'pulse' not in CALIB:
+                    CALIB['pulse'] = {}
+                if joint not in CALIB['pulse'] or not isinstance(CALIB['pulse'][joint], dict):
+                    CALIB['pulse'][joint] = {"min_pulse": 500, "max_pulse": 2500}
+                if pmin is not None:
+                    CALIB['pulse'][joint]['min_pulse'] = int(pmin)
+                if pmax is not None:
+                    CALIB['pulse'][joint]['max_pulse'] = int(pmax)
+        except Exception as e:
+            print("⚠️ Fehler beim Anwenden der Pulseinstellungen:", e)
+
         if data.get('save'):
             try:
                 save_calib(CALIB)

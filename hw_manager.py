@@ -10,6 +10,8 @@ import threading
 import queue
 import time
 from typing import Dict
+import os
+import json
 
 class ServoManager:
     def __init__(self):
@@ -23,12 +25,29 @@ class ServoManager:
         self.thread.daemon = True
         self.thread.start()
 
+    def _load_calib_pulses(self):
+        try:
+            cfg_path = os.path.join(os.path.dirname(__file__), "calib.json")
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    c = json.load(f)
+                pulses = c.get("pulse", {})
+                return pulses
+        except Exception as e:
+            print("⚠️ Fehler beim Laden von calib.json für Pulsweiten:", e)
+        return {}
+
     def _init_hardware(self) -> bool:
         try:
             import board
             import busio
             from adafruit_pca9685 import PCA9685
             from adafruit_motor import servo
+            import ui_config as ui_cfg
+
+            pulses = self._load_calib_pulses()
+            # build channel -> joint map from ui_config
+            channel_to_joint = {v: k for k, v in ui_cfg.SERVO_MAP.items()}
 
             i2c = busio.I2C(board.SCL, board.SDA)
             pca = PCA9685(i2c, address=0x40)
@@ -36,7 +55,17 @@ class ServoManager:
 
             for ch in range(5):
                 try:
-                    s = servo.Servo(pca.channels[ch], min_pulse=500, max_pulse=2500)
+                    joint = channel_to_joint.get(ch)
+                    # default pulse values
+                    min_p = 500
+                    max_p = 2500
+                    if joint and isinstance(pulses, dict):
+                        pj = pulses.get(joint)
+                        if isinstance(pj, dict):
+                            min_p = int(pj.get("min_pulse", min_p))
+                            max_p = int(pj.get("max_pulse", max_p))
+                    print(f"🔧 Kanal {ch} ({joint}) Pulswerte: min={min_p} max={max_p}")
+                    s = servo.Servo(pca.channels[ch], min_pulse=min_p, max_pulse=max_p)
                     self.servos[ch] = {"obj": s, "pca": pca}
                 except Exception as e:
                     print(f"⚠️ Kanal {ch} Init-Fehler: {e}")

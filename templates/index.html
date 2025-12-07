@@ -121,6 +121,9 @@ function buildCalibUI(){
     const home = CALIB.home[joint];
     const step = CALIB.step[joint] ?? 5;
 
+    const pulseMin = (CALIB.pulse && CALIB.pulse[joint] && CALIB.pulse[joint].min_pulse) ? CALIB.pulse[joint].min_pulse : 500;
+    const pulseMax = (CALIB.pulse && CALIB.pulse[joint] && CALIB.pulse[joint].max_pulse) ? CALIB.pulse[joint].max_pulse : 2500;
+
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
@@ -130,6 +133,11 @@ function buildCalibUI(){
         <div class="field"><label>Max</label><input type="number" id="${joint}-max" value="${limits[1]}"></div>
         <div class="field"><label>Step</label><input type="number" id="${joint}-step" value="${step}"></div>
         <div class="field"><label>Home</label><input type="number" id="${joint}-home" value="${home}"></div>
+
+        <div style="margin-top:8px"><strong>Pulse (min / max, µs)</strong></div>
+        <div class="field"><label>Pulse Min</label><input type="number" id="${joint}-pulse-min" value="${pulseMin}"></div>
+        <div class="field"><label>Pulse Max</label><input type="number" id="${joint}-pulse-max" value="${pulseMax}"></div>
+
         <div style="margin-top:8px" class="actions">
           <button class="small" onclick="setLimitsFromCurrent('${joint}')">Use current pos</button>
           <button class="small" onclick="applyLimits('${joint}', false)">Apply (temp)</button>
@@ -188,7 +196,10 @@ async function applyLimits(joint, save=false){
   const hi = parseInt(document.getElementById(joint+'-max').value);
   const step = parseInt(document.getElementById(joint+'-step').value);
   const home = parseInt(document.getElementById(joint+'-home').value);
-  const payload = { joint: joint, min: lo, max: hi, step: step, home: home, save: save };
+  const pulse_min = parseInt(document.getElementById(joint+'-pulse-min').value || 500);
+  const pulse_max = parseInt(document.getElementById(joint+'-pulse-max').value || 2500);
+
+  const payload = { joint: joint, min: lo, max: hi, step: step, home: home, save: save, pulse_min: pulse_min, pulse_max: pulse_max };
   const res = await api('/api/calibration/update', { method:'POST', body: JSON.stringify(payload) });
   if(res && res.success){
     await reloadCalibration();
