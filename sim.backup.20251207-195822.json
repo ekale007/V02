@@ -1,0 +1,5 @@
+{
+  "lengths": {"shoulder": 90, "elbow": 70, "wrist": 50, "hand": 20},
+  "origin": {"x": 210, "y": 260},
+  "scale": 1.0
+}
