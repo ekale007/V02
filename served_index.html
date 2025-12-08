@@ -202,30 +202,11 @@ function buildCalibUI(){
     <div class="field"><label>Wrist</label><input type="number" id="sim-wrist" value="${SIM.lengths.wrist}"></div>
     <div class="field"><label>Hand</label><input type="number" id="sim-hand" value="${SIM.lengths.hand}"></div>
     <div class="field"><label>Scale</label><input type="number" step="0.1" id="sim-scale" value="${SIM.scale}"></div>
-    <div style="margin-top:8px"><strong>Angle Offsets (deg)</strong></div>
-    <div class="field"><label>Shoulder offset</label><input type="number" id="sim-offset-shoulder" value="${(SIM.offsets && SIM.offsets.shoulder) ? SIM.offsets.shoulder : 0}"></div>
-    <div class="field"><label>Elbow offset</label><input type="number" id="sim-offset-elbow" value="${(SIM.offsets && SIM.offsets.elbow) ? SIM.offsets.elbow : 0}"></div>
-    <div class="field"><label>Wrist offset</label><input type="number" id="sim-offset-wrist" value="${(SIM.offsets && SIM.offsets.wrist) ? SIM.offsets.wrist : 0}"></div>
-    <div class="field"><label>Hand offset</label><input type="number" id="sim-offset-hand" value="${(SIM.offsets && SIM.offsets.hand) ? SIM.offsets.hand : 0}"></div>
-    <div style="margin-top:8px"><strong>Axis Mapping</strong></div>
-    <div class="field"><label>Base (C)</label>
-      <select id="sim-axis-base"><option value="z" ${axes.base==='z'?'selected':''}>C (Z)</option><option value="y" ${axes.base==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.base==='x'?'selected':''}>A (X)</option></select>
-    </div>
-    <div class="field"><label>Shoulder</label>
-      <select id="sim-axis-shoulder"><option value="y" ${axes.shoulder==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.shoulder==='x'?'selected':''}>A (X)</option></select>  
-    </div>
-    <div class="field"><label>Elbow</label>
-      <select id="sim-axis-elbow"><option value="y" ${axes.elbow==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.elbow==='x'?'selected':''}>A (X)</option></select>
-    </div>
-    <div class="field"><label>Wrist</label>
-      <select id="sim-axis-wrist"><option value="y" ${axes.wrist==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.wrist==='x'?'selected':''}>A (X)</option></select>
-    </div>
-    <div class="field"><label>Hand</label>
-      <select id="sim-axis-hand"><option value="y" ${axes.hand==='y'?'selected':''}>B (Y)</option><option value="x" ${axes.hand==='x'?'selected':''}>A (X)</option></select>
-    </div>
+    <div style="margin-top:8px" class="muted">Angle offsets and axis mapping have been moved to the interactive 3D editor — click a joint in the Full 3D view to edit its axis and offset.</div>
     <div style="margin-top:8px" class="actions">
       <button onclick="applySimConfig(false)">Apply</button>
       <button onclick="applySimConfig(true)">Apply + Save</button>
+      <button onclick="window.open('/3d','_blank')">Open 3D Editor</button>
     </div>
   `;
   container.appendChild(simCard);
@@ -308,13 +289,45 @@ async function applySimConfig(save=false){
     hand: parseInt(document.getElementById('sim-hand').value)
   };
   const scale = parseFloat(document.getElementById('sim-scale').value || 1.0);
-  const axes = {
-    base: document.getElementById('sim-axis-base').value,
-    shoulder: document.getElementById('sim-axis-shoulder').value,
-    elbow: document.getElementById('sim-axis-elbow').value,
-    wrist: document.getElementById('sim-axis-wrist').value,
-    hand: document.getElementById('sim-axis-hand').value
-  };
-  const offsets = {
-    shoulder: parseInt(document.getElementById('sim-offset-shoulder').value || 0),
-    elbow: parseInt(document.getElementById('sim-offset-elbow').value || 0),
+  const res = await api('/api/simconfig', {method:'POST', body: JSON.stringify({lengths: lengths, scale: scale, save: save})});
+  if(res && res.success){
+    const updated = await api('/api/simconfig',{method:'GET'});
+    SIM = updated;
+    buildCalibUI();
+    // update embedded previews
+    try{ if(typeof syncBoth3DPreviews === 'function') syncBoth3DPreviews(); }catch(_){ }
+  } else {
+    alert('Fehler beim Anwenden der Sim-Konfiguration');
+  }
+}
+
+async function saveSimConfig(save){
+  await applySimConfig(save);
+}
+
+/* 2D preview removed: using 3D preview iframe instead */
+
+/* ---------- Polling & sync ---------- */
+async function poll(){
+  try{
+    const s = await api('/api/status',{method:'GET'});
+    const statusEl = document.getElementById('statusText');
+    if(statusEl) statusEl.textContent = s.hardware_available? 'Hardware OK':'Simulation';
+    latestPositions = Object.assign({}, latestPositions, s.positions || {});
+    // set targets instead of jumping
+    targetPositions = Object.assign({}, targetPositions, s.positions || {});
+    for(const [k,v] of Object.entries(s.positions||{})){
+      const el = document.getElementById(k+'Slider');
+      if(document.activeElement !== el){ el.value = v; document.getElementById(k+'Val').textContent = v+'°'; }
+    }
+  }catch(e){}
+  setTimeout(poll, 400);
+}
+
+/* ---------- Init ---------- */
+document.addEventListener('DOMContentLoaded', async ()=>{ await reloadCalibration(); // initialize preview params from sliders
+  try{ onPreviewParamChange(); }catch(_){ }
+  poll(); });
+</script>
+</body>
+</html>

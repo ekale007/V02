@@ -12,51 +12,110 @@
       }
     </script>
     <style>
-      html,body{height:100%;margin:0;background:#061025;color:#dbeafe;font-family:system-ui,Segoe UI,Roboto,Arial}
-      #topBar{display:flex;gap:8px;padding:8px;background:rgba(0,0,0,0.25);align-items:center}
+      html,body{height:100%;margin:0;background:#061025;color:#dbeafe;font-family:system-ui,Segoe UI,Roboto,Arial;}
+      body{display:flex;flex-direction:column}
+      /* Top header */
+      #topBar{display:flex;gap:8px;padding:8px;background:rgba(0,0,0,0.25);align-items:center;justify-content:space-between;flex:0 0 56px}
+      .top-left{display:flex;gap:8px;align-items:center}
+      .header-status{background:rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px;color:#fef3c7;font-weight:600}
+      .header-btn{background:transparent;border:0;padding:6px;border-radius:6px;color:#dbeafe;cursor:pointer}
       button{background:#0ea5e9;border:0;padding:8px 10px;color:#042027;border-radius:6px;cursor:pointer}
+      .emergency{background:#ef4444;color:white;border-radius:6px;padding:8px 12px;font-weight:700}
       #info{margin-left:8px;color:#fee2b3}
-      #canvasWrap{width:100%;height:calc(100% - 56px);display:block}
+
+      /* Main split area below header */
+      #main{flex:1 1 auto;display:flex;min-height:0}
+      #leftPane{flex:1 1 65%;min-width:320px;display:flex;align-items:stretch}
+      #rightPane{flex:0 0 35%;min-width:260px;padding:12px;box-sizing:border-box;overflow:auto}
+
+      /* Canvas should fill left pane */
+      #canvasWrap{width:100%;height:100%;display:block;position:relative}
+      #canvasWrap canvas, #canvasWrap canvas + *{display:block}
     </style>
   </head>
   <body>
-    <div id="topBar">
-      <button id="homeBtn">Home</button>
-      <button id="resetBtn">Reset View</button>
-      <button id="rotToggle">Rotation: On</button>
-      <div id="info">Loading 3D…</div>
-    </div>
-    <div id="canvasWrap"></div>
-    <div id="tooltip" style="position:fixed;pointer-events:none;left:10px;top:56px;background:rgba(2,6,23,0.9);color:#e6fffa;padding:8px 10px;border-radius:6px;border:1px solid rgba(70,140,255,0.12);min-width:200px;display:none;font-size:13px;z-index:999"> 
-      <div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1"><div id="tt-name" style="font-weight:700;margin-bottom:4px">Joint</div>
-      <div id="tt-angle">Angle: —</div>
-      <div id="tt-hint" style="margin-top:6px;color:#9ca3af;font-size:12px">Drag to rotate • Click to select</div></div>
-      <div id="tt-schematic" style="width:80px;height:50px"></div></div>
-    </div>
+      <div id="topBar">
+        <div class="top-left">
+          <div class="header-status" id="headerStatus">Status: —</div>
+          <!-- Symbol-only home button -->
+          <button id="homeIconBtn" class="header-btn" title="Go Home">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 11.5L12 4l9 7.5" stroke="#dbeafe" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11.5v7a1 1 0 0 0 1 1h3v-5h6v5h3a1 1 0 0 0 1-1v-7" stroke="#dbeafe" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="homeBtn">Home</button>
+          <button id="resetBtn">Reset View</button>
+          <button id="rotToggle">Rotation: On</button>
+          <button id="syncBtn" title="Sync preview with calibration">Sync Preview</button>
+          <label style="margin-left:8px;color:#fee2b3">Flip:</label>
+          <select id="flipSelect" style="background:transparent;color:#dbeafe;border:1px solid rgba(255,255,255,0.04);padding:6px;border-radius:6px;margin-left:6px">
+          <option value="base">base</option>
+          <option value="shoulder">shoulder</option>
+          <option value="elbow">elbow</option>
+          <option value="wrist">wrist</option>
+          <option value="hand">hand</option>
+        </select>
+        <button id="flipBtn" title="Flip selected joint direction" style="margin-left:6px">Flip Dir</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div id="info">Loading 3D…</div>
+          <button id="emergencyBtn" class="emergency">EMERGENCY</button>
+        </div>
+        </div>
+      </div>
+
+      <div id="main">
+        <div id="leftPane">
+          <div id="canvasWrap"></div>
+        </div>
+        <div id="rightPane">
+          <!-- Side panel: reserved for calibration, controls and logs -->
+          <h3 style="margin-top:0">Controls</h3>
+          <div id="sideContent">Calibration and controls will appear here.</div>
+        </div>
+      </div>
+
+      <div id="tooltip" style="position:fixed;pointer-events:none;left:10px;top:70px;background:rgba(2,6,23,0.9);color:#e6fffa;padding:8px 10px;border-radius:6px;border:1px solid rgba(70,140,255,0.12);min-width:200px;display:none;font-size:13px;z-index:999"> 
+        <div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1"><div id="tt-name" style="font-weight:700;margin-bottom:4px">Joint</div>
+        <div id="tt-angle">Angle: —</div>
+        <div id="tt-hint" style="margin-top:6px;color:#9ca3af;font-size:12px">Drag to rotate • Click to select</div></div>
+        <div id="tt-schematic" style="width:80px;height:50px"></div></div>
+      </div>
 
     <script type="module">
     (function(){
+    const IS_PREVIEW = new URLSearchParams(window.location.search).has('preview');
     // helper to inject a script tag and wait for load
     function loadScript(url){ return new Promise((resolve, reject)=>{ const s = document.createElement('script'); s.src = url; s.onload = ()=>resolve(); s.onerror = (e)=>reject(e); document.head.appendChild(s); }); }
 
     // initializer using a THREE namespace and OrbitControls constructor
     function initWithTHREE(THREElib, OrbitControlsCtor){
       try{
+        try{ const infoEl = document.getElementById('info'); if(infoEl) infoEl.textContent = 'Initializing 3D…'; }catch(_){ }
+        console.log('sim3d: initWithTHREE start');
         const THREE = THREElib;
         const OrbitControls = OrbitControlsCtor;
         const wrap = document.getElementById('canvasWrap');
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x071127);
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
         camera.position.set(200,200,260);
-        const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth, window.innerHeight); wrap.appendChild(renderer.domElement);
+        const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(wrap.clientWidth || window.innerWidth, wrap.clientHeight || window.innerHeight); renderer.domElement.style.display='block'; renderer.domElement.style.width='100%'; renderer.domElement.style.height='100%'; wrap.appendChild(renderer.domElement);
         const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+        // Preview mode: restrict panning and keep rotate+zoom around center
+        if(IS_PREVIEW){ controls.enablePan = false; controls.enableRotate = true; controls.enableZoom = true; controls.minDistance = 60; controls.maxDistance = 800; }
         scene.add(new THREE.AmbientLight(0xffffff,0.5)); const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(100,200,100); scene.add(dir);
         const grid = new THREE.GridHelper(400,40,0x1f2937,0x0b1226); grid.position.y = -1; scene.add(grid);
         const joints = {}; const materials = { body: new THREE.MeshStandardMaterial({color:0x60a5fa, metalness:0.3, roughness:0.6}), joint: new THREE.MeshStandardMaterial({color:0xffffff}), grip: new THREE.MeshStandardMaterial({color:0xf59e0b}) };
         function box(w,h,d){ return new THREE.BoxGeometry(w,h,d); }
         // slimmer link shapes for easier joint clicking
-        joints.base = new THREE.Object3D(); scene.add(joints.base); const baseMesh = new THREE.Mesh(box(48,14,48), materials.body.clone()); baseMesh.position.y = 7; joints.base.add(baseMesh);
-        joints.shoulder = new THREE.Object3D(); joints.shoulder.position.y = 14; joints.base.add(joints.shoulder); const shoulderGeom = box(18,80,18); const shoulderMesh = new THREE.Mesh(shoulderGeom, materials.body.clone()); shoulderMesh.position.y = 40; joints.shoulder.add(shoulderMesh);
+        joints.base = new THREE.Object3D(); scene.add(joints.base);
+        // base and control-box dimensions (declare early so shoulder can be positioned)
+        const plateRadius = 30;
+        // control box and base dimensions - width == base diameter, depth == 2x width, height doubled
+        const ctrlW = plateRadius * 2; // width equals base diameter
+        const ctrlD = ctrlW * 2; // length is double the width
+        const ctrlH = 36; // doubled height (was 18)
+
+        // place shoulder joint on top of the base plate (use ctrlH so it sits at plate top)
+        joints.shoulder = new THREE.Object3D(); joints.shoulder.position.y = ctrlH; joints.base.add(joints.shoulder);
+        const shoulderGeom = box(18,80,18); const shoulderMesh = new THREE.Mesh(shoulderGeom, materials.body.clone()); shoulderMesh.position.y = 40; joints.shoulder.add(shoulderMesh);
         joints.elbow = new THREE.Object3D(); joints.elbow.position.y = 80; joints.shoulder.add(joints.elbow); const elbowGeom = box(14,60,14); const elbowMesh = new THREE.Mesh(elbowGeom, materials.body.clone()); elbowMesh.position.y = 30; joints.elbow.add(elbowMesh);
         joints.wrist = new THREE.Object3D(); joints.wrist.position.y = 60; joints.elbow.add(joints.wrist); const wristGeom = box(12,40,12); const wristMesh = new THREE.Mesh(wristGeom, materials.body.clone()); wristMesh.position.y = 20; joints.wrist.add(wristMesh);
         joints.hand = new THREE.Object3D(); joints.hand.position.y = 40; joints.wrist.add(joints.hand); const handGeom = box(10,18,18); const handMesh = new THREE.Mesh(handGeom, materials.grip.clone()); handMesh.position.y = 9; joints.hand.add(handMesh);
@@ -66,15 +125,55 @@
           parent.add(pick); return {marker:m, pick:pick}; }
         const jm_base = jointMarker(joints.base, 10); const jm_sh = jointMarker(joints.shoulder, 10); const jm_el = jointMarker(joints.elbow, 9); const jm_wr = jointMarker(joints.wrist, 8); const jm_hd = jointMarker(joints.hand, 8);
         // replace base visual with a round plate and add a top indicator
-        const plateRadius = 30;
-        const plateGeom = new THREE.CylinderGeometry(plateRadius, plateRadius, 6, 48);
-        const plateMat = materials.body.clone(); plateMat.roughness = 0.8; const plate = new THREE.Mesh(plateGeom, plateMat); plate.position.y = 3; joints.base.add(plate);
+        const plateGeom = new THREE.CylinderGeometry(plateRadius, plateRadius, ctrlH, 48);
+        const plateMat = materials.body.clone(); plateMat.roughness = 0.8; const plate = new THREE.Mesh(plateGeom, plateMat); plate.position.y = ctrlH/2; joints.base.add(plate);
         // small arrow indicator on top of base showing current yaw
         const indGeom = new THREE.BoxGeometry(2,1,12); const indMat = new THREE.MeshStandardMaterial({color:0xfffbeb}); const baseIndicator = new THREE.Mesh(indGeom, indMat); baseIndicator.position.y = 10; baseIndicator.position.z = 10; joints.base.add(baseIndicator);
+        // orientation arrow pointing in +X (forward) placed in front of the robot for easier orientation
+        try{
+          // create a flat, thick 3D arrow (shaft + cone head) that starts at the robot center and points +X
+          const arrowGroup = new THREE.Group();
+          const shaftLength = 80;
+          const shaftThickness = 3; // flat
+          const shaftDepth = 18; // thick
+          const shaftGeom = new THREE.BoxGeometry(shaftLength, shaftThickness, shaftDepth);
+          const shaftMat = new THREE.MeshStandardMaterial({color:0xff4444, metalness:0.2, roughness:0.6});
+          const shaft = new THREE.Mesh(shaftGeom, shaftMat);
+          // position shaft so its start is at the robot center (box is centered by default)
+          // lay arrow on the ground plane (y ~ 1)
+          shaft.position.set(shaftLength/2, 1, 0);
+          arrowGroup.add(shaft);
+          // cone head
+          const headRadius = Math.max(shaftDepth*0.9, 6);
+          const headHeight = 14;
+          const headGeom = new THREE.ConeGeometry(headRadius, headHeight, 24);
+          const headMat = new THREE.MeshStandardMaterial({color:0xff4444});
+          const head = new THREE.Mesh(headGeom, headMat);
+          // rotate cone to point along +X (cone default points +Y)
+          head.rotation.z = -Math.PI/2;
+          head.position.set(shaftLength + headHeight/2, 1, 0);
+          arrowGroup.add(head);
+          // optional flat base plate label: small box under shaft for visual weight
+          try{
+            const basePad = new THREE.Mesh(new THREE.BoxGeometry(14,2,8), new THREE.MeshStandardMaterial({color:0xff6666, opacity:0.6, transparent:true}));
+            basePad.position.set(6, 1, 0);
+            arrowGroup.add(basePad);
+          }catch(_){ }
+          scene.add(arrowGroup);
+            // add a small control box protruding from center in -X to represent the control box under the shoulder
+            try{
+              const ctrlGeom = new THREE.BoxGeometry(ctrlW, ctrlH, ctrlD);
+              const ctrlMat = materials.body.clone(); ctrlMat.roughness = 0.9; const ctrlBox = new THREE.Mesh(ctrlGeom, ctrlMat);
+              // position box so it extends in -X from the base center and sits on the ground (y = ctrlH/2)
+              ctrlBox.position.set(-(ctrlW/2 + 6), ctrlH/2, 0);
+              // add control box to scene root so it remains static (doesn't rotate with base)
+              scene.add(ctrlBox);
+            }catch(_){ }
+        }catch(_){ /* ignore if geometry APIs not available */ }
         const LINK_MESH = { base: plate, shoulder: shoulderMesh, elbow: elbowMesh, wrist: wristMesh, hand: handMesh };
         const MARKER_MAP = { base: jm_base.marker, shoulder: jm_sh.marker, elbow: jm_el.marker, wrist: jm_wr.marker, hand: jm_hd.marker };
         const JOINT_ORDER = ['base','shoulder','elbow','wrist','hand'];
-        const JOINT_META = { base: {obj: joints.base, axis: new THREE.Vector3(0,1,0), min:0, max:180, zero:90}, shoulder: {obj: joints.shoulder, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90}, elbow: {obj: joints.elbow, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90}, wrist: {obj: joints.wrist, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90}, hand: {obj: joints.hand, axis: new THREE.Vector3(0,0,1), min:0, max:180, zero:0} };
+        const JOINT_META = { base: {obj: joints.base, axis: new THREE.Vector3(0,1,0), min:0, max:180, zero:90, invert:false}, shoulder: {obj: joints.shoulder, axis: new THREE.Vector3(0,1,0), min:0, max:180, zero:90, invert:false}, elbow: {obj: joints.elbow, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90, invert:false}, wrist: {obj: joints.wrist, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90, invert:false}, hand: {obj: joints.hand, axis: new THREE.Vector3(0,0,1), min:0, max:180, zero:0, invert:false} };
         const ray = new THREE.Raycaster(); const pointer = new THREE.Vector2(); let selected = null; let prevPointer = null;
         // drag state: record pointer on down and the starting absolute angle
         let dragStartPointer = null; let dragStartAngle = null;
@@ -88,19 +187,16 @@
         const JOINT_ARROWS = {};
         const ARC_RADII = { base:[32,40], shoulder:[48,60], elbow:[42,52], wrist:[34,44], hand:[12,20] };
         function makeArrowsForJoint(name){ const meta = JOINT_META[name]; if(!meta) return; const origin = new THREE.Vector3(0,0,0); const len = (ARC_RADII[name] && ARC_RADII[name][1])? ARC_RADII[name][1] : 36; const colMin = 0x22c1ff; const colMax = 0xffdd57; try{ const dir0 = new THREE.Vector3(1,0,0);
-          // apply axis offset for X/Y joints (model orientation correction)
-          const axisOffset = (meta.axis.x || meta.axis.y) ? 90 : 0;
-          const a0 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.min - meta.zero - axisOffset)); dir0.applyQuaternion(a0).normalize(); const arr0 = new THREE.ArrowHelper(dir0, origin, len, colMin, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr0.visible = false; meta.obj.add(arr0);
-          const dir1 = new THREE.Vector3(1,0,0); const a1 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.max - meta.zero - axisOffset)); dir1.applyQuaternion(a1).normalize(); const arr1 = new THREE.ArrowHelper(dir1, origin, len, colMax, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr1.visible = false; meta.obj.add(arr1);
+          // Compute arrow directions relative to joint zero/home — no implicit 90° offset
+          const a0 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.min - meta.zero)); dir0.applyQuaternion(a0).normalize(); const arr0 = new THREE.ArrowHelper(dir0, origin, len, colMin, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr0.visible = false; meta.obj.add(arr0);
+          const dir1 = new THREE.Vector3(1,0,0); const a1 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.max - meta.zero)); dir1.applyQuaternion(a1).normalize(); const arr1 = new THREE.ArrowHelper(dir1, origin, len, colMax, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr1.visible = false; meta.obj.add(arr1);
           JOINT_ARROWS[name] = [arr0, arr1]; }catch(_){ /* ignore if ArrowHelper not present */ } }
         function makeArcForJoint(name){
           const meta = JOINT_META[name]; if(!meta) return;
           const radii = ARC_RADII[name] || [20,30]; const inner = radii[0]; const outer = radii[1];
-          // account for model orientation: X/Y-axis joints need an axis offset so arcs line up with visual joints
-          const axisOffset = (meta.axis.x || meta.axis.y) ? 90 : 0;
-          // Some models require the arc sector to be flipped 180°; apply axisFlipDeg for X/Y joints
+          // Compute arc start relative to joint zero/home; apply a flip for X/Y joints if needed
           const axisFlipDeg = (meta.axis.x || meta.axis.y) ? 180 : 0;
-          const thetaStart = THREE.MathUtils.degToRad(meta.min - meta.zero - axisOffset + axisFlipDeg);
+          const thetaStart = THREE.MathUtils.degToRad(meta.min - meta.zero + axisFlipDeg);
           const thetaLen = THREE.MathUtils.degToRad(meta.max - meta.min);
           const geom = new THREE.RingGeometry(inner, outer, 64, 1, thetaStart, Math.max(0.001, thetaLen));
           const mat = new THREE.MeshBasicMaterial({color:0x44ccff, transparent:true, opacity:0.18, side:THREE.DoubleSide});
@@ -112,8 +208,8 @@
           JOINT_ARCS[name] = mesh;
           // create min/max tick markers (two thin lines) and add to scene-root
           try{
-            const minA = THREE.MathUtils.degToRad(meta.min - meta.zero - axisOffset + axisFlipDeg);
-            const maxA = THREE.MathUtils.degToRad(meta.max - meta.zero - axisOffset + axisFlipDeg);
+            const minA = THREE.MathUtils.degToRad(meta.min - meta.zero + axisFlipDeg);
+            const maxA = THREE.MathUtils.degToRad(meta.max - meta.zero + axisFlipDeg);
             function makeTick(angleRad, color){
               const x0 = inner * Math.cos(angleRad);
               const y0 = inner * Math.sin(angleRad);
@@ -150,20 +246,46 @@
         async function pollCalibration(){ try{ const resp = await fetch('/api/calibration', {cache:'no-store'}); if(resp && resp.ok){ const data = await resp.json(); const snap = JSON.stringify({limits:data.limits||{}, home:data.home||{}}); if(snap !== _lastCalib){ _lastCalib = snap; await updateCalibrationData(data); } } }catch(_){ /* ignore transient errors */ } }
         // initial poll + interval
         pollCalibration(); const _calibPoll = setInterval(pollCalibration, 2000);
+        // Poll /api/status so preview follows slider/servo movements
+        async function pollStatusOnce(){
+          try{
+            const resp = await fetch('/api/status',{cache:'no-store'});
+            if(resp && resp.ok){
+              const data = await resp.json();
+              applyStatusPositions(data);
+              // update header status badge when polling status
+              try{
+                const hs = document.getElementById('headerStatus');
+                if(hs) hs.textContent = data.hardware_available? 'Status: Hardware OK' : 'Status: Simulation';
+              }catch(_){ }
+            }
+          }catch(_){ }
+        }
+        // helper: convert logical servo value -> world rotation (radians) taking invert into account
+        function valueToWorldRad(m, value){ const sign = m.invert? -1: 1; return THREE.MathUtils.degToRad(sign * (value - (m.zero || 0))); }
+        // helper: convert world rotation (object rotation in radians) -> logical servo value
+        function worldRadToValue(m){ const rotDeg = THREE.MathUtils.radToDeg(m.axis.x?m.obj.rotation.x:(m.axis.y?m.obj.rotation.y:m.obj.rotation.z)); return (m.zero || 0) + (m.invert ? -rotDeg : rotDeg); }
+
+        function applyStatusPositions(data){ if(!data || !data.positions) return; for(const j of JOINT_ORDER){ const m = JOINT_META[j]; if(!m) continue; const val = data.positions[j]; if(typeof val === 'number'){ const worldRad = valueToWorldRad(m, val); if(m.axis.x) m.obj.rotation.x = worldRad; else if(m.axis.y) m.obj.rotation.y = worldRad; else if(m.axis.z) m.obj.rotation.z = worldRad; } } }
+        // poll fast for responsive preview
+        const _statusPoll = setInterval(pollStatusOnce, 240);
+        // preview camera smoothing parameters (exposed as live-updatable vars)
+        let previewTargetLerp = 0.12; // 0 = instant, 1 = snap
+        let previewTargetHeight = 12; // world-units to offset upward from shoulder
         function screenToPointer(ev){ const rect = renderer.domElement.getBoundingClientRect(); return { x: ((ev.clientX - rect.left)/rect.width)*2-1, y: -((ev.clientY - rect.top)/rect.height)*2+1 }; }
         function sendMove(jointName, angle){ fetch('/api/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({joint:jointName, angle: Math.round(angle)})}).catch(()=>{}); }
-        renderer.domElement.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); const p = screenToPointer(ev); pointer.x = p.x; pointer.y = p.y; ray.setFromCamera(pointer, camera); const intersects = ray.intersectObjects(PICK_TARGETS, true); if(intersects.length>0){ let obj = intersects[0].object; // find which joint this pick belongs to
+        renderer.domElement.addEventListener('pointerdown', (ev)=>{ if(IS_PREVIEW) return; ev.preventDefault(); const p = screenToPointer(ev); pointer.x = p.x; pointer.y = p.y; ray.setFromCamera(pointer, camera); const intersects = ray.intersectObjects(PICK_TARGETS, true); if(intersects.length>0){ let obj = intersects[0].object; // find which joint this pick belongs to
             let found = null;
             if(obj === jm_base.pick) found = 'base'; else if(obj === jm_sh.pick) found = 'shoulder'; else if(obj === jm_el.pick) found = 'elbow'; else if(obj === jm_wr.pick) found = 'wrist'; else if(obj === jm_hd.pick) found = 'hand';
             if(found){ selected = found; // record starting pointer and absolute angle for stable dragging
-              dragStartPointer = {x:ev.clientX, y:ev.clientY}; prevPointer = {x:ev.clientX, y:ev.clientY}; const meta = JOINT_META[found]; if(meta){ const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const axisOffsetDown = (meta.axis.x||meta.axis.y)?90:0; dragStartAngle = THREE.MathUtils.radToDeg(rot) + meta.zero - axisOffsetDown; }
+              dragStartPointer = {x:ev.clientX, y:ev.clientY}; prevPointer = {x:ev.clientX, y:ev.clientY}; const meta = JOINT_META[found]; if(meta){ try{ dragStartAngle = worldRadToValue(meta); }catch(_){ const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); dragStartAngle = THREE.MathUtils.radToDeg(rot) + meta.zero; } }
               // disable orbit rotation while dragging a joint
               try{ controls.enableRotate = false; }catch(_){}; document.body.style.cursor = 'grabbing'; }
         } });
 
         // Hover highlight when not dragging (also update tooltip & arrows)
         renderer.domElement.addEventListener('pointermove', (ev)=>{
-          if(selected) return; // don't hover while dragging
+          if(IS_PREVIEW) return; if(selected) return; // don't hover while dragging
           const p = screenToPointer(ev);
           pointer.x = p.x; pointer.y = p.y; ray.setFromCamera(pointer, camera);
           const ints = ray.intersectObjects(PICK_TARGETS, true);
@@ -179,29 +301,78 @@
                   const ticks = JOINT_TICKS[hoverName]; if(ticks) ticks.forEach(t=>t.visible=true);
                 }catch(_){}
               // update tooltip content & position (including small schematic SVG)
-              const t = document.getElementById('tooltip'); const tn = document.getElementById('tt-name'); const ta = document.getElementById('tt-angle'); const tv = document.getElementById('tt-schematic'); if(t && tn && ta){ tn.textContent = hoverName; const meta = JOINT_META[hoverName]; const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const axisOffsetHover = (meta.axis.x||meta.axis.y)?90:0; const current = Math.round(THREE.MathUtils.radToDeg(rot) + meta.zero - axisOffsetHover); ta.textContent = 'Angle: ' + current + '°'; t.style.display = 'block'; const rect = renderer.domElement.getBoundingClientRect(); t.style.left = (ev.clientX+12) + 'px'; t.style.top = (ev.clientY+12) + 'px'; 
+              const t = document.getElementById('tooltip'); const tn = document.getElementById('tt-name'); const ta = document.getElementById('tt-angle'); const tv = document.getElementById('tt-schematic'); if(t && tn && ta){ tn.textContent = hoverName; const meta = JOINT_META[hoverName]; const current = Math.round(worldRadToValue(meta)); ta.textContent = 'Angle: ' + current + '°'; t.style.display = 'block'; const rect = renderer.domElement.getBoundingClientRect(); t.style.left = (ev.clientX+12) + 'px'; t.style.top = (ev.clientY+12) + 'px'; 
                   // update schematic svg
-                  if(tv){ const w=80,h=50, cx=w/2, cy=h/2, r=24; const a0 = (meta.min - meta.zero - axisOffsetHover) * Math.PI/180; const a1 = (meta.max - meta.zero - axisOffsetHover) * Math.PI/180; const x0 = cx + r*Math.cos(a0 - Math.PI/2); const y0 = cy + r*Math.sin(a0 - Math.PI/2); const x1 = cx + r*Math.cos(a1 - Math.PI/2); const y1 = cy + r*Math.sin(a1 - Math.PI/2); const large = (Math.abs(a1-a0) > Math.PI)?1:0; const path = `<path d="M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z" fill="#22c1ff33" stroke="#22c1ff66" stroke-width="1"/>`;
+                  if(tv){ const w=80,h=50, cx=w/2, cy=h/2, r=24; const a0 = (meta.min - meta.zero) * Math.PI/180; const a1 = (meta.max - meta.zero) * Math.PI/180; const x0 = cx + r*Math.cos(a0 - Math.PI/2); const y0 = cy + r*Math.sin(a0 - Math.PI/2); const x1 = cx + r*Math.cos(a1 - Math.PI/2); const y1 = cy + r*Math.sin(a1 - Math.PI/2); const large = (Math.abs(a1-a0) > Math.PI)?1:0; const path = `<path d="M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z" fill="#22c1ff33" stroke="#22c1ff66" stroke-width="1"/>`;
                     tv.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${path}<circle cx="${cx}" cy="${cy}" r="2" fill="#fff"/></svg>`; }
                 }
               document.body.style.cursor = 'pointer'; }
           } else { if(hoverName){ try{ LINK_MESH[hoverName].material.emissive.setHex(0x000000); MARKER_MAP[hoverName].material.emissive.setHex(0x000000); const arc = JOINT_ARCS[hoverName]; if(arc) arc.visible=false; const ticks = JOINT_TICKS[hoverName]; if(ticks) ticks.forEach(t=>t.visible=false); }catch(_){} } hoverName = null; document.body.style.cursor = 'default'; }
         });
-        window.addEventListener('pointermove', (ev)=>{ if(!selected) return; ev.preventDefault(); if(!dragStartPointer || dragStartAngle===null) return; const dx = ev.clientX - dragStartPointer.x; const degPerPx = 0.25; // pixels → degrees mapping
-          const meta = JOINT_META[selected]; if(!meta) return; const desired = dragStartAngle + dx * degPerPx; const clamped = Math.max(meta.min, Math.min(meta.max, desired)); // set rotation to clamped angle relative to zero
-          const rotRad = THREE.MathUtils.degToRad(clamped - meta.zero);
-          if(meta.axis.x) meta.obj.rotation.x = rotRad; else if(meta.axis.y) meta.obj.rotation.y = rotRad; else if(meta.axis.z) meta.obj.rotation.z = rotRad; sendMove(selected, clamped); });
-        window.addEventListener('pointerup', ()=>{ selected = null; prevPointer = null; dragStartPointer = null; dragStartAngle = null; try{ controls.enableRotate = rotationEnabled; }catch(_){}; document.body.style.cursor = 'default'; const t = document.getElementById('tooltip'); if(t) t.style.display = 'none'; // hide tooltip on release
+        window.addEventListener('pointermove', (ev)=>{ if(IS_PREVIEW) return; if(!selected) return; ev.preventDefault(); if(!dragStartPointer || dragStartAngle===null) return; const dx = ev.clientX - dragStartPointer.x; const degPerPx = 0.25; // pixels → degrees mapping
+          const meta = JOINT_META[selected]; if(!meta) return; const desired = dragStartAngle + dx * degPerPx; const clamped = Math.max(meta.min, Math.min(meta.max, desired)); // set rotation to clamped angle (respect invert)
+          const worldRad = valueToWorldRad(meta, clamped);
+          if(meta.axis.x) meta.obj.rotation.x = worldRad; else if(meta.axis.y) meta.obj.rotation.y = worldRad; else if(meta.axis.z) meta.obj.rotation.z = worldRad; sendMove(selected, clamped); });
+        window.addEventListener('pointerup', ()=>{ if(IS_PREVIEW) return; selected = null; prevPointer = null; dragStartPointer = null; dragStartAngle = null; try{ controls.enableRotate = rotationEnabled; }catch(_){}; document.body.style.cursor = 'default'; const t = document.getElementById('tooltip'); if(t) t.style.display = 'none'; // hide tooltip on release
           // hide any arcs and ticks if not hovering
           for(const k of Object.keys(JOINT_ARCS)) if(k !== hoverName){ const ar = JOINT_ARCS[k]; if(ar) ar.visible=false; const tks = JOINT_TICKS[k]; if(tks) tks.forEach(t=>t.visible=false); }
         });
-        let lastDist = null; renderer.domElement.addEventListener('touchstart', (ev)=>{ if(ev.touches.length===2){ const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); lastDist = d; } }); renderer.domElement.addEventListener('touchmove', (ev)=>{ if(ev.touches.length===2 && lastDist){ ev.preventDefault(); const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); const f = d/lastDist; camera.position.multiplyScalar(1/f); lastDist = d; } }, {passive:false}); renderer.domElement.addEventListener('touchend', ()=>{ lastDist = null; });
-        document.getElementById('homeBtn').addEventListener('click', ()=>{ fetch('/api/home',{method:'POST'}).catch(()=>{}); for(const name of JOINT_ORDER){ const m=JOINT_META[name]; const z = m.zero; const axisOffsetHome = (m.axis.x||m.axis.y)?90:0; if(m.axis.x) m.obj.rotation.x = THREE.MathUtils.degToRad(z - axisOffsetHome); else if(m.axis.y) m.obj.rotation.y = THREE.MathUtils.degToRad(z - axisOffsetHome); else if(m.axis.z) m.obj.rotation.z = THREE.MathUtils.degToRad(z); } });
+        let lastDist = null; renderer.domElement.addEventListener('touchstart', (ev)=>{ if(IS_PREVIEW) return; if(ev.touches.length===2){ const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); lastDist = d; } }); renderer.domElement.addEventListener('touchmove', (ev)=>{ if(IS_PREVIEW) return; if(ev.touches.length===2 && lastDist){ ev.preventDefault(); const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); const f = d/lastDist; camera.position.multiplyScalar(1/f); lastDist = d; } }, {passive:false}); renderer.domElement.addEventListener('touchend', ()=>{ lastDist = null; });
+        document.getElementById('homeBtn').addEventListener('click', ()=>{ fetch('/api/home',{method:'POST'}).catch(()=>{}); for(const name of JOINT_ORDER){ const m=JOINT_META[name]; const z = m.zero || 0; try{ const wr = valueToWorldRad(m, z); if(m.axis.x) m.obj.rotation.x = wr; else if(m.axis.y) m.obj.rotation.y = wr; else if(m.axis.z) m.obj.rotation.z = wr; }catch(_){ if(m.axis.x) m.obj.rotation.x = THREE.MathUtils.degToRad(z); else if(m.axis.y) m.obj.rotation.y = THREE.MathUtils.degToRad(z); else if(m.axis.z) m.obj.rotation.z = THREE.MathUtils.degToRad(z); } } });
+        // symbol-based Home button in header (same action as `homeBtn`)
+        const homeIcon = document.getElementById('homeIconBtn');
+        if(homeIcon){ homeIcon.addEventListener('click', ()=>{ try{ document.getElementById('homeBtn').click(); }catch(_){ fetch('/api/home',{method:'POST'}).catch(()=>{}); } }); }
+        // Emergency button in header: prominent rectangular button
+        const emBtn = document.getElementById('emergencyBtn');
+        if(emBtn){ emBtn.addEventListener('click', ()=>{
+          if(!confirm('Trigger EMERGENCY STOP?')) return;
+          fetch('/api/emergency',{method:'POST'}).then(()=>{
+            const hs = document.getElementById('headerStatus'); if(hs) hs.textContent = 'Status: EMERGENCY';
+          }).catch(()=>{ const hs = document.getElementById('headerStatus'); if(hs) hs.textContent = 'Status: EMERGENCY (failed to notify)'; });
+        }); }
         document.getElementById('resetBtn').addEventListener('click', ()=>{ controls.reset(); });
         document.getElementById('rotToggle').addEventListener('click', ()=>{ rotationEnabled = !rotationEnabled; try{ controls.enableRotate = rotationEnabled; }catch(_){}; document.getElementById('rotToggle').textContent = 'Rotation: ' + (rotationEnabled? 'On':'Off'); });
+        const sb = document.getElementById('syncBtn'); if(sb) sb.addEventListener('click', ()=>{ if(window.syncPreviewCalibration) window.syncPreviewCalibration(); });
+        // Flip-direction button toggles `invert` on the selected joint for preview testing
+        const flipBtn = document.getElementById('flipBtn');
+        if(flipBtn){
+          flipBtn.addEventListener('click', ()=>{
+            try{
+              const sel = document.getElementById('flipSelect');
+              const j = sel? sel.value : 'base';
+              const m = JOINT_META[j];
+              if(m){
+                m.invert = !m.invert;
+                const infoEl = document.getElementById('info');
+                if(infoEl) infoEl.textContent = `${j} invert: ${m.invert ? 'yes':'no'}`;
+                // refresh visual helpers to reflect sign (rebuild arrows/arcs)
+                try{
+                  const existing = JOINT_ARCS[j];
+                  if(existing && existing.parent) existing.parent.remove(existing);
+                  delete JOINT_ARCS[j];
+                  const tset = JOINT_TICKS[j];
+                  if(tset){
+                    try{ for(const tt of tset) if(tt && tt.parent) tt.parent.remove(tt); }catch(_){ }
+                    delete JOINT_TICKS[j];
+                  }
+                  const aSet = JOINT_ARROWS[j];
+                  if(aSet){
+                    try{ for(const a of aSet) if(a && a.parent) a.parent.remove(a); }catch(_){ }
+                    delete JOINT_ARROWS[j];
+                  }
+                  makeArcForJoint(j);
+                  try{ makeArrowsForJoint(j); }catch(_){ }
+                }catch(_){ }
+                setTimeout(()=>{ if(infoEl) infoEl.textContent = '' }, 1200);
+              }
+            }catch(e){ console.warn('flip failed', e); }
+          });
+        }
         function animate(){ requestAnimationFrame(animate); // update base indicator and tooltip angle each frame
+          // in preview mode we want the camera target to follow the shoulder end
+          if(IS_PREVIEW){ try{ const shoulderWorld = new THREE.Vector3(); JOINT_META.shoulder.obj.getWorldPosition(shoulderWorld); const desiredTarget = shoulderWorld.clone().add(new THREE.Vector3(0, previewTargetHeight, 0)); controls.target.lerp(desiredTarget, previewTargetLerp); controls.update(); }catch(_){ } }
           for(const name of JOINT_ORDER){ const meta = JOINT_META[name]; if(!meta) continue; // update arrow directions in case geometry moved
-            const arrows = JOINT_ARROWS[name]; if(arrows){ const base = new THREE.Vector3(1,0,0); if(Math.abs(meta.axis.dot(base))>0.9) base.set(0,0,1); const axisOffsetAr = (meta.axis.x||meta.axis.y)?90:0; const axisFlipAr = (meta.axis.x||meta.axis.y)?180:0; for(let i=0;i<arrows.length;i++){ const angle = (i===0?meta.min:meta.max); const ang = THREE.MathUtils.degToRad((angle - meta.zero - axisOffsetAr + axisFlipAr)); const q = new THREE.Quaternion().setFromAxisAngle(meta.axis, ang); const dir = base.clone().applyQuaternion(q).normalize(); arrows[i].setDirection(dir); arrows[i].position.copy(new THREE.Vector3(0,0,0)); } }
+            const arrows = JOINT_ARROWS[name]; if(arrows){ const base = new THREE.Vector3(1,0,0); if(Math.abs(meta.axis.dot(base))>0.9) base.set(0,0,1); const axisFlipAr = (meta.axis.x||meta.axis.y)?180:0; for(let i=0;i<arrows.length;i++){ const angle = (i===0?meta.min:meta.max); const ang = THREE.MathUtils.degToRad((angle - meta.zero + axisFlipAr)); const q = new THREE.Quaternion().setFromAxisAngle(meta.axis, ang); const dir = base.clone().applyQuaternion(q).normalize(); arrows[i].setDirection(dir); arrows[i].position.copy(new THREE.Vector3(0,0,0)); } }
               // update base indicator rotation
               if(name==='base'){ const m = JOINT_META.base; const rot = m.obj.rotation.y || m.obj.rotation.z || m.obj.rotation.x; baseIndicator.rotation.y = m.obj.rotation.y || 0; }
             }
@@ -229,38 +400,96 @@
           // update tooltip position if visible and hoverName
           const t = document.getElementById('tooltip'); if(t && hoverName){ // attempt to place near joint screen position
             const worldPos = new THREE.Vector3(); JOINT_META[hoverName].obj.getWorldPosition(worldPos); const pos = worldPos.project(camera); const rect = renderer.domElement.getBoundingClientRect(); const x = (pos.x * 0.5 + 0.5) * rect.width + rect.left; const y = (-pos.y * 0.5 + 0.5) * rect.height + rect.top; t.style.left = (x+12) + 'px'; t.style.top = (y+12) + 'px'; // update angle
-            const meta = JOINT_META[hoverName]; const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const axisOffsetTip = (meta.axis.x||meta.axis.y)?90:0; const current = Math.round(THREE.MathUtils.radToDeg(rot) + meta.zero - axisOffsetTip); const ta = document.getElementById('tt-angle'); if(ta) ta.textContent = 'Angle: ' + current + '°'; }
+            const meta = JOINT_META[hoverName]; const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const current = Math.round(THREE.MathUtils.radToDeg(rot) + meta.zero); const ta = document.getElementById('tt-angle'); if(ta) ta.textContent = 'Angle: ' + current + '°'; }
           controls.update(); renderer.render(scene, camera); } animate();
-        window.addEventListener('resize', ()=>{ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        window.addEventListener('resize', ()=>{ const w = wrap.clientWidth || window.innerWidth; const h = wrap.clientHeight || window.innerHeight; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w,h); });
         const info = document.getElementById('info'); if(info) info.textContent = '';
+        // hide UI chrome for compact preview mode
+        if(IS_PREVIEW){ try{ const tb = document.getElementById('topBar'); if(tb) tb.style.display='none'; const tt = document.getElementById('tooltip'); if(tt) tt.style.display='none'; }catch(_){ } }
+        // expose a sync function to pull latest calibration/home and sim offsets into the preview
+        window.syncPreviewCalibration = async function(){
+          try{
+            // fetch calibration (home/limits)
+            const resp = await fetch('/api/calibration',{cache:'no-store'});
+            const calib = (resp && resp.ok) ? await resp.json() : null;
+            // fetch sim config (axes + offsets)
+            let sim = null;
+            try{ const s = await fetch('/api/simconfig',{cache:'no-store'}); if(s && s.ok) sim = await s.json(); }catch(_){ /* ignore */ }
+            // first apply calibration data (limits + home)
+            if(calib) await updateCalibrationData(calib);
+            // then apply offsets according to axis mapping: sim.offsets[j] = {a,b,c}
+            if(sim && sim.offsets){
+              JOINT_ORDER.forEach(function(j){
+                const homeVal = (calib && calib.home && typeof calib.home[j] !== 'undefined') ? calib.home[j] : (JOINT_META[j] && JOINT_META[j].zero ? JOINT_META[j].zero : 0);
+                let offsetToApply = 0;
+                const offs = sim.offsets[j] || {};
+                const axis = (sim.axes && sim.axes[j]) ? sim.axes[j] : null;
+                if(axis === 'x') offsetToApply = offs.a || 0;
+                else if(axis === 'y') offsetToApply = offs.b || 0;
+                else if(axis === 'z') offsetToApply = offs.c || 0;
+                if(JOINT_META[j]){
+                  JOINT_META[j].zero = homeVal + (offsetToApply || 0);
+                  // update joint rotation axis according to sim.axes mapping so C (z) rotates around Z, etc.
+                  try{
+                    if(axis === 'x') JOINT_META[j].axis = new THREE.Vector3(1,0,0);
+                    else if(axis === 'y') JOINT_META[j].axis = new THREE.Vector3(0,1,0);
+                    else if(axis === 'z') JOINT_META[j].axis = new THREE.Vector3(0,0,1);
+                  }catch(_){ }
+                  // Rebuild visual helpers for this joint so arcs/arrows align with the new axis
+                  try{
+                    const existingArc = JOINT_ARCS[j]; if(existingArc && existingArc.parent) existingArc.parent.remove(existingArc); delete JOINT_ARCS[j];
+                    const tset = JOINT_TICKS[j]; if(tset){ try{ for(const tt of tset) if(tt && tt.parent) tt.parent.remove(tt); }catch(_){ } delete JOINT_TICKS[j]; }
+                    const aSet = JOINT_ARROWS[j]; if(aSet){ try{ for(const a of aSet) if(a && a.parent) a.parent.remove(a); }catch(_){ } delete JOINT_ARROWS[j]; }
+                    makeArcForJoint(j);
+                    try{ makeArrowsForJoint(j); }catch(_){ }
+                  }catch(_){ }
+                }
+              });
+            }
+            // also apply home (zero) rotations immediately so preview matches calibration+offset
+            try{
+              for(const name of JOINT_ORDER){ const m = JOINT_META[name]; if(!m) continue; const z = m.zero || 0; const rotRad = THREE.MathUtils.degToRad(z); if(m.axis.x) m.obj.rotation.x = rotRad; else if(m.axis.y) m.obj.rotation.y = rotRad; else if(m.axis.z) m.obj.rotation.z = rotRad; }
+            }catch(_){ /* ignore rotation apply errors */ }
+            info.textContent = 'Preview synced'; setTimeout(()=>{ info.textContent = '' }, 1500);
+          }catch(e){ console.warn(e); info.textContent = 'Sync failed'; setTimeout(()=>{ info.textContent = '' }, 1500); }
+        };
+        // allow parent to set preview camera parameters live
+        window.setPreviewParams = function(o){ try{ if(typeof o !== 'object') return; if(typeof o.lerp !== 'undefined'){ previewTargetLerp = Number(o.lerp) || previewTargetLerp; } if(typeof o.height !== 'undefined'){ previewTargetHeight = Number(o.height) || previewTargetHeight; } }catch(_){ } };
+        // also accept postMessage from parent (fallback)
+        window.addEventListener('message', function(ev){ try{ const d = ev.data; if(d && d.type === 'setPreviewParams'){ window.setPreviewParams({ lerp: d.lerp, height: d.height }); } }catch(_){ } });
       }catch(err){ console.error('initWithTHREE error', err); throw err; }
     }
 
     (async ()=>{
       try{
+        console.log('sim3d: bootstrap start', { preview: IS_PREVIEW });
         // Use import map to resolve bare 'three' specifiers, then import OrbitControls as ES module
           // Prefer `import('three')` so the import map (above) can point to our local `three.module.js`.
           // Fallback to local `/static/js/three.module.js` then CDN. This avoids loading two
           // separate Three.js instances which caused "Multiple instances of Three.js" warnings.
           let THREE;
-          try{ THREE = await import('three'); }
-          catch(e1){ try{ THREE = await import('/static/js/three.module.js'); }catch(e2){ THREE = await import('https://unpkg.com/three@0.158.0/build/three.module.js'); }}
+          try{ console.log('sim3d: attempting dynamic import("three")'); THREE = await import('three'); console.log('sim3d: import("three") succeeded'); }
+          catch(e1){ console.warn('sim3d: import("three") failed, trying local module', e1);
+            try{ console.log('sim3d: attempting import("/static/js/three.module.js")'); THREE = await import('/static/js/three.module.js'); console.log('sim3d: local three.module import succeeded'); }
+            catch(e2){ console.warn('sim3d: local three.module import failed, trying CDN', e2); THREE = await import('https://unpkg.com/three@0.158.0/build/three.module.js'); console.log('sim3d: CDN three.module import succeeded'); }}
         try{
-          // Import the module-version of OrbitControls; import map maps 'three' -> three.module.js
+          console.log('sim3d: attempting ESM OrbitControls import (CDN)');
           const ocMod = await import('https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js');
           const OrbitControls = ocMod.OrbitControls;
+          console.log('sim3d: ESM OrbitControls import succeeded');
           initWithTHREE(THREE, OrbitControls);
           return;
         }catch(jsmErr){
-          console.warn('ESM OrbitControls import failed, will try local module then UMD OrbitControls next', jsmErr);
-          // try a local module copy before falling back to UMD (helps when CDN blocked)
+          console.warn('sim3d: ESM OrbitControls import failed, will try local module then UMD OrbitControls next', jsmErr);
           try{
+            console.log('sim3d: attempting local OrbitControls.module import');
             const ocLocal = await import('/static/js/OrbitControls.module.js');
             const OrbitControls = ocLocal.OrbitControls || ocLocal.default;
+            console.log('sim3d: local OrbitControls.module import succeeded');
             initWithTHREE(THREE, OrbitControls);
             return;
           }catch(localErr){
-            console.warn('Local module OrbitControls import failed, will try UMD fallbacks', localErr);
+            console.warn('sim3d: local module OrbitControls import failed, will try UMD fallbacks', localErr);
           }
         }
 

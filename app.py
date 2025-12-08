@@ -74,7 +74,9 @@ CALIB = load_calib()
 # --- Web UI ---
 @app.route('/')
 def index():
-    return render_template('index.html', servo_map=cfg.SERVO_MAP, positions=cfg.CURRENT_POSITIONS, meta=cfg.UI_META, sim_config=SIM, hardware_available=servo_manager.hardware_available)
+    # Serve the full 3D interactive editor as the new index page.
+    # Keep the /3d route as-is for explicit access.
+    return render_template('sim3d.html')
 
 @app.route('/3d')
 def sim3d():
@@ -108,11 +110,32 @@ def api_sim_post():
             if 'offsets' in data and isinstance(data['offsets'], dict):
                 if 'offsets' not in SIM or not isinstance(SIM['offsets'], dict):
                     SIM['offsets'] = {}
-                for k,v in data['offsets'].items():
+                for k, v in data['offsets'].items():
+                    # Accept either a scalar legacy offset or a nested object {a,b,c}
                     try:
-                        SIM['offsets'][k] = int(v)
+                        if isinstance(v, dict):
+                            # Coerce values to numbers (float) for a/b/c
+                            a = v.get('a', 0)
+                            b = v.get('b', 0)
+                            c = v.get('c', 0)
+                            try:
+                                a = float(a)
+                            except Exception:
+                                a = 0.0
+                            try:
+                                b = float(b)
+                            except Exception:
+                                b = 0.0
+                            try:
+                                c = float(c)
+                            except Exception:
+                                c = 0.0
+                            SIM['offsets'][k] = {'a': a, 'b': b, 'c': c}
+                        else:
+                            # scalar offset (legacy) — store as integer for backward compat
+                            SIM['offsets'][k] = int(v)
                     except Exception:
-                        SIM['offsets'][k] = 0
+                        SIM['offsets'][k] = v if isinstance(v, dict) else 0
             if 'scale' in data:
                 SIM['scale'] = float(data['scale'])
             if data.get('save'):
@@ -149,7 +172,14 @@ def api_move():
     except Exception:
         return jsonify({'error': 'invalid angle'}), 400
     ch = cfg.SERVO_MAP[joint]
-    servo_manager.move_servo(ch, angle)
+    # optional speed field from client (1..100)
+    speed = None
+    try:
+        if 'speed' in data:
+            speed = int(data.get('speed'))
+    except Exception:
+        speed = None
+    servo_manager.move_servo(ch, angle, speed=speed)
     # update current positions
     cfg.CURRENT_POSITIONS[joint] = angle
     return jsonify({'success': True, 'joint': joint, 'angle': angle})
@@ -229,6 +259,34 @@ def api_calibration_update():
         except Exception as e:
             print("⚠️ Fehler beim Anwenden der Pulseinstellungen:", e)
 
+        # motion tuning fields (optional): store per-joint min_dps/max_dps
+        try:
+            min_dps = data.get('min_dps')
+            max_dps = data.get('max_dps')
+            if min_dps is not None or max_dps is not None:
+                if 'motion' not in CALIB or not isinstance(CALIB['motion'], dict):
+                    CALIB['motion'] = {}
+                if joint not in CALIB['motion'] or not isinstance(CALIB['motion'][joint], dict):
+                    CALIB['motion'][joint] = {}
+                if min_dps is not None:
+                    try:
+                        CALIB['motion'][joint]['min_dps'] = float(min_dps)
+                    except Exception:
+                        pass
+                if max_dps is not None:
+                    try:
+                        CALIB['motion'][joint]['max_dps'] = float(max_dps)
+                    except Exception:
+                        pass
+                # persist now if requested
+                if data.get('save'):
+                    try:
+                        save_calib(CALIB)
+                    except Exception as e:
+                        print("⚠️ Fehler beim Speichern der Kalibrierung (motion):", e)
+        except Exception as e:
+            print("⚠️ Fehler beim Anwenden der Motion-Einstellungen:", e)
+
         if data.get('save'):
             try:
                 save_calib(CALIB)
@@ -255,7 +313,13 @@ def api_calibration_move():
     if joint not in cfg.SERVO_MAP:
         return jsonify({'error': 'unknown joint'}), 400
     ch = cfg.SERVO_MAP[joint]
-    servo_manager.move_servo(ch, angle)
+    speed = None
+    try:
+        if 'speed' in data:
+            speed = int(data.get('speed'))
+    except Exception:
+        speed = None
+    servo_manager.move_servo(ch, angle, speed=speed)
     cfg.CURRENT_POSITIONS[joint] = angle
     return jsonify({'success': True})
 
