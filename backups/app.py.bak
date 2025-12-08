@@ -74,12 +74,7 @@ CALIB = load_calib()
 # --- Web UI ---
 @app.route('/')
 def index():
-    return render_template('index.html', servo_map=cfg.SERVO_MAP, positions=cfg.CURRENT_POSITIONS, meta=cfg.UI_META, sim_config=SIM, hardware_available=servo_manager.hardware_available)
-
-@app.route('/3d')
-def sim3d():
-    # simple 3D interactive simulation page
-    return render_template('sim3d.html')
+    return render_template('index.html', servo_map=cfg.SERVO_MAP, positions=cfg.CURRENT_POSITIONS, meta=cfg.UI_META, sim_config=SIM)
 
 # --- Sim config endpoints ---
 @app.route('/api/simconfig', methods=['GET'])
@@ -98,21 +93,6 @@ def api_sim_post():
             if 'origin' in data:
                 for k,v in data['origin'].items():
                     SIM['origin'][k] = int(v)
-            # axes mapping: allow updating which axis each joint rotates around
-            if 'axes' in data and isinstance(data['axes'], dict):
-                if 'axes' not in SIM or not isinstance(SIM['axes'], dict):
-                    SIM['axes'] = {}
-                for k,v in data['axes'].items():
-                    SIM['axes'][k] = str(v)
-            # offsets mapping: allow updating angle offsets for joints (degrees)
-            if 'offsets' in data and isinstance(data['offsets'], dict):
-                if 'offsets' not in SIM or not isinstance(SIM['offsets'], dict):
-                    SIM['offsets'] = {}
-                for k,v in data['offsets'].items():
-                    try:
-                        SIM['offsets'][k] = int(v)
-                    except Exception:
-                        SIM['offsets'][k] = 0
             if 'scale' in data:
                 SIM['scale'] = float(data['scale'])
             if data.get('save'):
@@ -131,17 +111,9 @@ def api_status():
 
 @app.route('/api/move', methods=['POST'])
 def api_move():
-    # Use robust parsing of JSON body to avoid Werkzeug BadRequest on malformed content-type
-    try:
-        raw = request.get_data(as_text=True) or '{}'
-        print(f"🔍 Raw request body: {raw!r}")
-        data = json.loads(raw)
-    except Exception as e:
-        print(f"⚠️ Failed to parse JSON body: {e}")
-        data = {}
+    data = request.get_json() or {}
     joint = data.get('joint')
     angle = data.get('angle')
-    print(f"🔔 Received move request: joint={joint} angle={angle}")
     if joint not in cfg.SERVO_MAP:
         return jsonify({'error': 'unknown joint'}), 400
     try:
@@ -219,13 +191,6 @@ def api_calibration_update():
                     CALIB['pulse'][joint]['min_pulse'] = int(pmin)
                 if pmax is not None:
                     CALIB['pulse'][joint]['max_pulse'] = int(pmax)
-                # Apply pulses to running hardware if possible
-                try:
-                    ch = cfg.SERVO_MAP.get(joint)
-                    if ch is not None:
-                        servo_manager.update_servo_pulse(ch, CALIB['pulse'][joint]['min_pulse'], CALIB['pulse'][joint]['max_pulse'])
-                except Exception as e:
-                    print("⚠️ Fehler beim Anwenden der Pulseinstellungen (runtime):", e)
         except Exception as e:
             print("⚠️ Fehler beim Anwenden der Pulseinstellungen:", e)
 

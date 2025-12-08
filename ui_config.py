@@ -27,5 +27,10 @@ UI_META = {
 SIM_CONFIG = {
     "lengths": {"shoulder": 90, "elbow": 70, "wrist": 50, "hand": 20},
     "origin": {"x": 210, "y": 260},
-    "scale": 1.0
+    "scale": 1.0,
+    # Axis mapping: base rotates around Z (C), other joints rotate around Y by default.
+    "axes": {"base": "z", "shoulder": "y", "elbow": "y", "wrist": "y", "hand": "y"}
 }
+
+# Optional offsets (degrees) to align servo angles with FK conventions
+SIM_CONFIG.setdefault('offsets', {"shoulder": 0, "elbow": 0, "wrist": 0, "hand": 0})

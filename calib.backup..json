@@ -1,0 +1,60 @@
+{
+  "limits": {
+    "base": [
+      0,
+      180
+    ],
+    "shoulder": [
+      0,
+      180
+    ],
+    "elbow": [
+      0,
+      180
+    ],
+    "wrist": [
+      0,
+      180
+    ],
+    "hand": [
+      0,
+      90
+    ]
+  },
+  "home": {
+    "base": 90,
+    "shoulder": 90,
+    "elbow": 90,
+    "wrist": 90,
+    "hand": 0
+  },
+  "step": {
+    "base": 5,
+    "shoulder": 5,
+    "elbow": 5,
+    "wrist": 5,
+    "hand": 5
+  },
+  "pulse": {
+    "base": {
+      "min_pulse": 600,
+      "max_pulse": 2850
+    },
+    "shoulder": {
+      "min_pulse": 1500,
+      "max_pulse": 3000
+    },
+    "elbow": {
+      "min_pulse": 600,
+      "max_pulse": 2900
+    },
+    "wrist": {
+      "min_pulse": 600,
+      "max_pulse": 2850
+    },
+    "hand": {
+      "min_pulse": 520,
+      "max_pulse": 2400
+    }
+  }
+}

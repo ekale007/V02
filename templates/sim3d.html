@@ -1,0 +1,305 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Robot Arm — 3D Sim</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/static/js/three.module.js"
+        }
+      }
+    </script>
+    <style>
+      html,body{height:100%;margin:0;background:#061025;color:#dbeafe;font-family:system-ui,Segoe UI,Roboto,Arial}
+      #topBar{display:flex;gap:8px;padding:8px;background:rgba(0,0,0,0.25);align-items:center}
+      button{background:#0ea5e9;border:0;padding:8px 10px;color:#042027;border-radius:6px;cursor:pointer}
+      #info{margin-left:8px;color:#fee2b3}
+      #canvasWrap{width:100%;height:calc(100% - 56px);display:block}
+    </style>
+  </head>
+  <body>
+    <div id="topBar">
+      <button id="homeBtn">Home</button>
+      <button id="resetBtn">Reset View</button>
+      <button id="rotToggle">Rotation: On</button>
+      <div id="info">Loading 3D…</div>
+    </div>
+    <div id="canvasWrap"></div>
+    <div id="tooltip" style="position:fixed;pointer-events:none;left:10px;top:56px;background:rgba(2,6,23,0.9);color:#e6fffa;padding:8px 10px;border-radius:6px;border:1px solid rgba(70,140,255,0.12);min-width:200px;display:none;font-size:13px;z-index:999"> 
+      <div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1"><div id="tt-name" style="font-weight:700;margin-bottom:4px">Joint</div>
+      <div id="tt-angle">Angle: —</div>
+      <div id="tt-hint" style="margin-top:6px;color:#9ca3af;font-size:12px">Drag to rotate • Click to select</div></div>
+      <div id="tt-schematic" style="width:80px;height:50px"></div></div>
+    </div>
+
+    <script type="module">
+    (function(){
+    // helper to inject a script tag and wait for load
+    function loadScript(url){ return new Promise((resolve, reject)=>{ const s = document.createElement('script'); s.src = url; s.onload = ()=>resolve(); s.onerror = (e)=>reject(e); document.head.appendChild(s); }); }
+
+    // initializer using a THREE namespace and OrbitControls constructor
+    function initWithTHREE(THREElib, OrbitControlsCtor){
+      try{
+        const THREE = THREElib;
+        const OrbitControls = OrbitControlsCtor;
+        const wrap = document.getElementById('canvasWrap');
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x071127);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+        camera.position.set(200,200,260);
+        const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(window.innerWidth, window.innerHeight); wrap.appendChild(renderer.domElement);
+        const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+        scene.add(new THREE.AmbientLight(0xffffff,0.5)); const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(100,200,100); scene.add(dir);
+        const grid = new THREE.GridHelper(400,40,0x1f2937,0x0b1226); grid.position.y = -1; scene.add(grid);
+        const joints = {}; const materials = { body: new THREE.MeshStandardMaterial({color:0x60a5fa, metalness:0.3, roughness:0.6}), joint: new THREE.MeshStandardMaterial({color:0xffffff}), grip: new THREE.MeshStandardMaterial({color:0xf59e0b}) };
+        function box(w,h,d){ return new THREE.BoxGeometry(w,h,d); }
+        // slimmer link shapes for easier joint clicking
+        joints.base = new THREE.Object3D(); scene.add(joints.base); const baseMesh = new THREE.Mesh(box(48,14,48), materials.body.clone()); baseMesh.position.y = 7; joints.base.add(baseMesh);
+        joints.shoulder = new THREE.Object3D(); joints.shoulder.position.y = 14; joints.base.add(joints.shoulder); const shoulderGeom = box(18,80,18); const shoulderMesh = new THREE.Mesh(shoulderGeom, materials.body.clone()); shoulderMesh.position.y = 40; joints.shoulder.add(shoulderMesh);
+        joints.elbow = new THREE.Object3D(); joints.elbow.position.y = 80; joints.shoulder.add(joints.elbow); const elbowGeom = box(14,60,14); const elbowMesh = new THREE.Mesh(elbowGeom, materials.body.clone()); elbowMesh.position.y = 30; joints.elbow.add(elbowMesh);
+        joints.wrist = new THREE.Object3D(); joints.wrist.position.y = 60; joints.elbow.add(joints.wrist); const wristGeom = box(12,40,12); const wristMesh = new THREE.Mesh(wristGeom, materials.body.clone()); wristMesh.position.y = 20; joints.wrist.add(wristMesh);
+        joints.hand = new THREE.Object3D(); joints.hand.position.y = 40; joints.wrist.add(joints.hand); const handGeom = box(10,18,18); const handMesh = new THREE.Mesh(handGeom, materials.grip.clone()); handMesh.position.y = 9; joints.hand.add(handMesh);
+        // joint markers (bigger) and invisible pick-spheres (slightly larger) to improve hit targets
+        const pickMaterial = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.001});
+        function jointMarker(parent, radius=10){ const m = new THREE.Mesh(new THREE.SphereGeometry(radius,16,16), materials.joint.clone()); m.position.set(0,0,0); parent.add(m); const pick = new THREE.Mesh(new THREE.SphereGeometry(radius*1.6,12,12), pickMaterial); pick.position.set(0,0,0); // slightly larger pick surface
+          parent.add(pick); return {marker:m, pick:pick}; }
+        const jm_base = jointMarker(joints.base, 10); const jm_sh = jointMarker(joints.shoulder, 10); const jm_el = jointMarker(joints.elbow, 9); const jm_wr = jointMarker(joints.wrist, 8); const jm_hd = jointMarker(joints.hand, 8);
+        // replace base visual with a round plate and add a top indicator
+        const plateRadius = 30;
+        const plateGeom = new THREE.CylinderGeometry(plateRadius, plateRadius, 6, 48);
+        const plateMat = materials.body.clone(); plateMat.roughness = 0.8; const plate = new THREE.Mesh(plateGeom, plateMat); plate.position.y = 3; joints.base.add(plate);
+        // small arrow indicator on top of base showing current yaw
+        const indGeom = new THREE.BoxGeometry(2,1,12); const indMat = new THREE.MeshStandardMaterial({color:0xfffbeb}); const baseIndicator = new THREE.Mesh(indGeom, indMat); baseIndicator.position.y = 10; baseIndicator.position.z = 10; joints.base.add(baseIndicator);
+        const LINK_MESH = { base: plate, shoulder: shoulderMesh, elbow: elbowMesh, wrist: wristMesh, hand: handMesh };
+        const MARKER_MAP = { base: jm_base.marker, shoulder: jm_sh.marker, elbow: jm_el.marker, wrist: jm_wr.marker, hand: jm_hd.marker };
+        const JOINT_ORDER = ['base','shoulder','elbow','wrist','hand'];
+        const JOINT_META = { base: {obj: joints.base, axis: new THREE.Vector3(0,1,0), min:0, max:180, zero:90}, shoulder: {obj: joints.shoulder, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90}, elbow: {obj: joints.elbow, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90}, wrist: {obj: joints.wrist, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90}, hand: {obj: joints.hand, axis: new THREE.Vector3(0,0,1), min:0, max:180, zero:0} };
+        const ray = new THREE.Raycaster(); const pointer = new THREE.Vector2(); let selected = null; let prevPointer = null;
+        // drag state: record pointer on down and the starting absolute angle
+        let dragStartPointer = null; let dragStartAngle = null;
+        let hoverName = null;
+        let rotationEnabled = true;
+        // arc (ring) helpers for min/max range per joint (semi-transparent sectors)
+        const JOINT_ARCS = {};
+        // thin line markers at min/max angles (scene-root so they stay fixed in world space)
+        const JOINT_TICKS = {};
+        // optional arrow helpers (min/max indicators) per joint — created if available
+        const JOINT_ARROWS = {};
+        const ARC_RADII = { base:[32,40], shoulder:[48,60], elbow:[42,52], wrist:[34,44], hand:[12,20] };
+        function makeArrowsForJoint(name){ const meta = JOINT_META[name]; if(!meta) return; const origin = new THREE.Vector3(0,0,0); const len = (ARC_RADII[name] && ARC_RADII[name][1])? ARC_RADII[name][1] : 36; const colMin = 0x22c1ff; const colMax = 0xffdd57; try{ const dir0 = new THREE.Vector3(1,0,0);
+          // apply axis offset for X/Y joints (model orientation correction)
+          const axisOffset = (meta.axis.x || meta.axis.y) ? 90 : 0;
+          const a0 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.min - meta.zero - axisOffset)); dir0.applyQuaternion(a0).normalize(); const arr0 = new THREE.ArrowHelper(dir0, origin, len, colMin, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr0.visible = false; meta.obj.add(arr0);
+          const dir1 = new THREE.Vector3(1,0,0); const a1 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.max - meta.zero - axisOffset)); dir1.applyQuaternion(a1).normalize(); const arr1 = new THREE.ArrowHelper(dir1, origin, len, colMax, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr1.visible = false; meta.obj.add(arr1);
+          JOINT_ARROWS[name] = [arr0, arr1]; }catch(_){ /* ignore if ArrowHelper not present */ } }
+        function makeArcForJoint(name){
+          const meta = JOINT_META[name]; if(!meta) return;
+          const radii = ARC_RADII[name] || [20,30]; const inner = radii[0]; const outer = radii[1];
+          // account for model orientation: X/Y-axis joints need an axis offset so arcs line up with visual joints
+          const axisOffset = (meta.axis.x || meta.axis.y) ? 90 : 0;
+          // Some models require the arc sector to be flipped 180°; apply axisFlipDeg for X/Y joints
+          const axisFlipDeg = (meta.axis.x || meta.axis.y) ? 180 : 0;
+          const thetaStart = THREE.MathUtils.degToRad(meta.min - meta.zero - axisOffset + axisFlipDeg);
+          const thetaLen = THREE.MathUtils.degToRad(meta.max - meta.min);
+          const geom = new THREE.RingGeometry(inner, outer, 64, 1, thetaStart, Math.max(0.001, thetaLen));
+          const mat = new THREE.MeshBasicMaterial({color:0x44ccff, transparent:true, opacity:0.18, side:THREE.DoubleSide});
+          const mesh = new THREE.Mesh(geom, mat);
+          // Add arcs to the scene root so they don't inherit the joint's rotation.
+          // We'll update their world position & orientation each frame inside animate().
+          // Hide by default; show on hover.
+          mesh.visible = false; scene.add(mesh);
+          JOINT_ARCS[name] = mesh;
+          // create min/max tick markers (two thin lines) and add to scene-root
+          try{
+            const minA = THREE.MathUtils.degToRad(meta.min - meta.zero - axisOffset + axisFlipDeg);
+            const maxA = THREE.MathUtils.degToRad(meta.max - meta.zero - axisOffset + axisFlipDeg);
+            function makeTick(angleRad, color){
+              const x0 = inner * Math.cos(angleRad);
+              const y0 = inner * Math.sin(angleRad);
+              const x1 = outer * Math.cos(angleRad);
+              const y1 = outer * Math.sin(angleRad);
+              const pts = [ new THREE.Vector3(x0, y0, 0), new THREE.Vector3(x1, y1, 0) ];
+              const geom = new THREE.BufferGeometry().setFromPoints(pts);
+              const mat = new THREE.LineBasicMaterial({ color: color, transparent:true, opacity:0.95 });
+              const line = new THREE.Line(geom, mat);
+              line.visible = false; scene.add(line);
+              return line;
+            }
+            const t0 = makeTick(minA, 0x22c1ff);
+            const t1 = makeTick(maxA, 0xffdd57);
+            JOINT_TICKS[name] = [t0, t1];
+          }catch(_){ /* ignore tick creation errors */ }
+        }
+        for(const nm of JOINT_ORDER) makeArcForJoint(nm);
+        // also create arrow indicators (non-blocking)
+        for(const nm of JOINT_ORDER) try{ makeArrowsForJoint(nm); }catch(_){ }
+        try{ controls.enableRotate = rotationEnabled; }catch(_){}
+        const PICK_TARGETS = [ jm_base.pick, jm_sh.pick, jm_el.pick, jm_wr.pick, jm_hd.pick ];
+        // live-poll calibration every 2s and update JOINT_META + arcs when changed
+        let _lastCalib = null;
+        async function updateCalibrationData(data){ if(!data) return; const changed = {};
+          if(data.limits){ for(const k of Object.keys(data.limits)){ if(JOINT_META[k]){ const lim = data.limits[k]; if(JOINT_META[k].min !== lim[0] || JOINT_META[k].max !== lim[1]){ JOINT_META[k].min = lim[0]; JOINT_META[k].max = lim[1]; changed[k]=true; } } } }
+          if(data.home){ for(const k of Object.keys(data.home)){ if(JOINT_META[k] && JOINT_META[k].zero !== data.home[k]){ JOINT_META[k].zero = data.home[k]; changed[k]=true; } } }
+          // rebuild arcs only for changed joints
+          for(const nm of Object.keys(changed)){ const existing = JOINT_ARCS[nm]; if(existing){ try{ JOINT_META[nm].obj.remove(existing); }catch(_){ } delete JOINT_ARCS[nm]; }
+            // remove any existing ticks for the joint
+            const tset = JOINT_TICKS[nm]; if(tset){ try{ for(const tt of tset) if(tt && tt.parent) tt.parent.remove(tt); }catch(_){ } delete JOINT_TICKS[nm]; }
+            makeArcForJoint(nm); }
+        }
+        async function pollCalibration(){ try{ const resp = await fetch('/api/calibration', {cache:'no-store'}); if(resp && resp.ok){ const data = await resp.json(); const snap = JSON.stringify({limits:data.limits||{}, home:data.home||{}}); if(snap !== _lastCalib){ _lastCalib = snap; await updateCalibrationData(data); } } }catch(_){ /* ignore transient errors */ } }
+        // initial poll + interval
+        pollCalibration(); const _calibPoll = setInterval(pollCalibration, 2000);
+        function screenToPointer(ev){ const rect = renderer.domElement.getBoundingClientRect(); return { x: ((ev.clientX - rect.left)/rect.width)*2-1, y: -((ev.clientY - rect.top)/rect.height)*2+1 }; }
+        function sendMove(jointName, angle){ fetch('/api/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({joint:jointName, angle: Math.round(angle)})}).catch(()=>{}); }
+        renderer.domElement.addEventListener('pointerdown', (ev)=>{ ev.preventDefault(); const p = screenToPointer(ev); pointer.x = p.x; pointer.y = p.y; ray.setFromCamera(pointer, camera); const intersects = ray.intersectObjects(PICK_TARGETS, true); if(intersects.length>0){ let obj = intersects[0].object; // find which joint this pick belongs to
+            let found = null;
+            if(obj === jm_base.pick) found = 'base'; else if(obj === jm_sh.pick) found = 'shoulder'; else if(obj === jm_el.pick) found = 'elbow'; else if(obj === jm_wr.pick) found = 'wrist'; else if(obj === jm_hd.pick) found = 'hand';
+            if(found){ selected = found; // record starting pointer and absolute angle for stable dragging
+              dragStartPointer = {x:ev.clientX, y:ev.clientY}; prevPointer = {x:ev.clientX, y:ev.clientY}; const meta = JOINT_META[found]; if(meta){ const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const axisOffsetDown = (meta.axis.x||meta.axis.y)?90:0; dragStartAngle = THREE.MathUtils.radToDeg(rot) + meta.zero - axisOffsetDown; }
+              // disable orbit rotation while dragging a joint
+              try{ controls.enableRotate = false; }catch(_){}; document.body.style.cursor = 'grabbing'; }
+        } });
+
+        // Hover highlight when not dragging (also update tooltip & arrows)
+        renderer.domElement.addEventListener('pointermove', (ev)=>{
+          if(selected) return; // don't hover while dragging
+          const p = screenToPointer(ev);
+          pointer.x = p.x; pointer.y = p.y; ray.setFromCamera(pointer, camera);
+          const ints = ray.intersectObjects(PICK_TARGETS, true);
+          if(ints.length>0){
+            let obj = ints[0].object; let found = null;
+            if(obj === jm_base.pick) found = 'base'; else if(obj === jm_sh.pick) found = 'shoulder'; else if(obj === jm_el.pick) found = 'elbow'; else if(obj === jm_wr.pick) found = 'wrist'; else if(obj === jm_hd.pick) found = 'hand';
+            if(found && found !== hoverName){ if(hoverName){ try{ LINK_MESH[hoverName].material.emissive.setHex(0x000000); MARKER_MAP[hoverName].material.emissive.setHex(0x000000); // hide arcs
+                  const prevA = JOINT_ARCS[hoverName]; if(prevA) prevA.visible=false;
+                  const prevT = JOINT_TICKS[hoverName]; if(prevT) prevT.forEach(t=>t.visible=false);
+                }catch(_){} }
+              hoverName = found; try{ LINK_MESH[hoverName].material.emissive.setHex(0x2244ff); MARKER_MAP[hoverName].material.emissive.setHex(0x44ffaa); // show arc
+                  const arc = JOINT_ARCS[hoverName]; if(arc) arc.visible=true;
+                  const ticks = JOINT_TICKS[hoverName]; if(ticks) ticks.forEach(t=>t.visible=true);
+                }catch(_){}
+              // update tooltip content & position (including small schematic SVG)
+              const t = document.getElementById('tooltip'); const tn = document.getElementById('tt-name'); const ta = document.getElementById('tt-angle'); const tv = document.getElementById('tt-schematic'); if(t && tn && ta){ tn.textContent = hoverName; const meta = JOINT_META[hoverName]; const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const axisOffsetHover = (meta.axis.x||meta.axis.y)?90:0; const current = Math.round(THREE.MathUtils.radToDeg(rot) + meta.zero - axisOffsetHover); ta.textContent = 'Angle: ' + current + '°'; t.style.display = 'block'; const rect = renderer.domElement.getBoundingClientRect(); t.style.left = (ev.clientX+12) + 'px'; t.style.top = (ev.clientY+12) + 'px'; 
+                  // update schematic svg
+                  if(tv){ const w=80,h=50, cx=w/2, cy=h/2, r=24; const a0 = (meta.min - meta.zero - axisOffsetHover) * Math.PI/180; const a1 = (meta.max - meta.zero - axisOffsetHover) * Math.PI/180; const x0 = cx + r*Math.cos(a0 - Math.PI/2); const y0 = cy + r*Math.sin(a0 - Math.PI/2); const x1 = cx + r*Math.cos(a1 - Math.PI/2); const y1 = cy + r*Math.sin(a1 - Math.PI/2); const large = (Math.abs(a1-a0) > Math.PI)?1:0; const path = `<path d="M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z" fill="#22c1ff33" stroke="#22c1ff66" stroke-width="1"/>`;
+                    tv.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${path}<circle cx="${cx}" cy="${cy}" r="2" fill="#fff"/></svg>`; }
+                }
+              document.body.style.cursor = 'pointer'; }
+          } else { if(hoverName){ try{ LINK_MESH[hoverName].material.emissive.setHex(0x000000); MARKER_MAP[hoverName].material.emissive.setHex(0x000000); const arc = JOINT_ARCS[hoverName]; if(arc) arc.visible=false; const ticks = JOINT_TICKS[hoverName]; if(ticks) ticks.forEach(t=>t.visible=false); }catch(_){} } hoverName = null; document.body.style.cursor = 'default'; }
+        });
+        window.addEventListener('pointermove', (ev)=>{ if(!selected) return; ev.preventDefault(); if(!dragStartPointer || dragStartAngle===null) return; const dx = ev.clientX - dragStartPointer.x; const degPerPx = 0.25; // pixels → degrees mapping
+          const meta = JOINT_META[selected]; if(!meta) return; const desired = dragStartAngle + dx * degPerPx; const clamped = Math.max(meta.min, Math.min(meta.max, desired)); // set rotation to clamped angle relative to zero
+          const rotRad = THREE.MathUtils.degToRad(clamped - meta.zero);
+          if(meta.axis.x) meta.obj.rotation.x = rotRad; else if(meta.axis.y) meta.obj.rotation.y = rotRad; else if(meta.axis.z) meta.obj.rotation.z = rotRad; sendMove(selected, clamped); });
+        window.addEventListener('pointerup', ()=>{ selected = null; prevPointer = null; dragStartPointer = null; dragStartAngle = null; try{ controls.enableRotate = rotationEnabled; }catch(_){}; document.body.style.cursor = 'default'; const t = document.getElementById('tooltip'); if(t) t.style.display = 'none'; // hide tooltip on release
+          // hide any arcs and ticks if not hovering
+          for(const k of Object.keys(JOINT_ARCS)) if(k !== hoverName){ const ar = JOINT_ARCS[k]; if(ar) ar.visible=false; const tks = JOINT_TICKS[k]; if(tks) tks.forEach(t=>t.visible=false); }
+        });
+        let lastDist = null; renderer.domElement.addEventListener('touchstart', (ev)=>{ if(ev.touches.length===2){ const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); lastDist = d; } }); renderer.domElement.addEventListener('touchmove', (ev)=>{ if(ev.touches.length===2 && lastDist){ ev.preventDefault(); const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); const f = d/lastDist; camera.position.multiplyScalar(1/f); lastDist = d; } }, {passive:false}); renderer.domElement.addEventListener('touchend', ()=>{ lastDist = null; });
+        document.getElementById('homeBtn').addEventListener('click', ()=>{ fetch('/api/home',{method:'POST'}).catch(()=>{}); for(const name of JOINT_ORDER){ const m=JOINT_META[name]; const z = m.zero; const axisOffsetHome = (m.axis.x||m.axis.y)?90:0; if(m.axis.x) m.obj.rotation.x = THREE.MathUtils.degToRad(z - axisOffsetHome); else if(m.axis.y) m.obj.rotation.y = THREE.MathUtils.degToRad(z - axisOffsetHome); else if(m.axis.z) m.obj.rotation.z = THREE.MathUtils.degToRad(z); } });
+        document.getElementById('resetBtn').addEventListener('click', ()=>{ controls.reset(); });
+        document.getElementById('rotToggle').addEventListener('click', ()=>{ rotationEnabled = !rotationEnabled; try{ controls.enableRotate = rotationEnabled; }catch(_){}; document.getElementById('rotToggle').textContent = 'Rotation: ' + (rotationEnabled? 'On':'Off'); });
+        function animate(){ requestAnimationFrame(animate); // update base indicator and tooltip angle each frame
+          for(const name of JOINT_ORDER){ const meta = JOINT_META[name]; if(!meta) continue; // update arrow directions in case geometry moved
+            const arrows = JOINT_ARROWS[name]; if(arrows){ const base = new THREE.Vector3(1,0,0); if(Math.abs(meta.axis.dot(base))>0.9) base.set(0,0,1); const axisOffsetAr = (meta.axis.x||meta.axis.y)?90:0; const axisFlipAr = (meta.axis.x||meta.axis.y)?180:0; for(let i=0;i<arrows.length;i++){ const angle = (i===0?meta.min:meta.max); const ang = THREE.MathUtils.degToRad((angle - meta.zero - axisOffsetAr + axisFlipAr)); const q = new THREE.Quaternion().setFromAxisAngle(meta.axis, ang); const dir = base.clone().applyQuaternion(q).normalize(); arrows[i].setDirection(dir); arrows[i].position.copy(new THREE.Vector3(0,0,0)); } }
+              // update base indicator rotation
+              if(name==='base'){ const m = JOINT_META.base; const rot = m.obj.rotation.y || m.obj.rotation.z || m.obj.rotation.x; baseIndicator.rotation.y = m.obj.rotation.y || 0; }
+            }
+            // update arc positions & orientations so they stay at joint world positions
+            for(const nm of Object.keys(JOINT_ARCS)){
+              try{
+                const arc = JOINT_ARCS[nm]; const meta = JOINT_META[nm]; if(!arc || !meta) continue;
+                const worldPos = new THREE.Vector3(); const worldQuat = new THREE.Quaternion(); meta.obj.getWorldPosition(worldPos); meta.obj.getWorldQuaternion(worldQuat);
+                const worldAxis = meta.axis.clone().applyQuaternion(worldQuat).normalize(); // ring normal is +Z locally
+                const qrot = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), worldAxis);
+                arc.position.copy(worldPos);
+                arc.quaternion.copy(qrot);
+              }catch(_){ }
+            }
+            // update tick markers positions & orientations so they stay at joint world positions
+            for(const nm of Object.keys(JOINT_TICKS)){
+              try{
+                const ticks = JOINT_TICKS[nm]; const meta = JOINT_META[nm]; if(!ticks || !meta) continue;
+                const worldPos = new THREE.Vector3(); const worldQuat = new THREE.Quaternion(); meta.obj.getWorldPosition(worldPos); meta.obj.getWorldQuaternion(worldQuat);
+                const worldAxis = meta.axis.clone().applyQuaternion(worldQuat).normalize();
+                const qrot = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), worldAxis);
+                for(const t of ticks){ if(!t) continue; t.position.copy(worldPos); t.quaternion.copy(qrot); }
+              }catch(_){ }
+            }
+          // update tooltip position if visible and hoverName
+          const t = document.getElementById('tooltip'); if(t && hoverName){ // attempt to place near joint screen position
+            const worldPos = new THREE.Vector3(); JOINT_META[hoverName].obj.getWorldPosition(worldPos); const pos = worldPos.project(camera); const rect = renderer.domElement.getBoundingClientRect(); const x = (pos.x * 0.5 + 0.5) * rect.width + rect.left; const y = (-pos.y * 0.5 + 0.5) * rect.height + rect.top; t.style.left = (x+12) + 'px'; t.style.top = (y+12) + 'px'; // update angle
+            const meta = JOINT_META[hoverName]; const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const axisOffsetTip = (meta.axis.x||meta.axis.y)?90:0; const current = Math.round(THREE.MathUtils.radToDeg(rot) + meta.zero - axisOffsetTip); const ta = document.getElementById('tt-angle'); if(ta) ta.textContent = 'Angle: ' + current + '°'; }
+          controls.update(); renderer.render(scene, camera); } animate();
+        window.addEventListener('resize', ()=>{ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        const info = document.getElementById('info'); if(info) info.textContent = '';
+      }catch(err){ console.error('initWithTHREE error', err); throw err; }
+    }
+
+    (async ()=>{
+      try{
+        // Use import map to resolve bare 'three' specifiers, then import OrbitControls as ES module
+          // Prefer `import('three')` so the import map (above) can point to our local `three.module.js`.
+          // Fallback to local `/static/js/three.module.js` then CDN. This avoids loading two
+          // separate Three.js instances which caused "Multiple instances of Three.js" warnings.
+          let THREE;
+          try{ THREE = await import('three'); }
+          catch(e1){ try{ THREE = await import('/static/js/three.module.js'); }catch(e2){ THREE = await import('https://unpkg.com/three@0.158.0/build/three.module.js'); }}
+        try{
+          // Import the module-version of OrbitControls; import map maps 'three' -> three.module.js
+          const ocMod = await import('https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js');
+          const OrbitControls = ocMod.OrbitControls;
+          initWithTHREE(THREE, OrbitControls);
+          return;
+        }catch(jsmErr){
+          console.warn('ESM OrbitControls import failed, will try local module then UMD OrbitControls next', jsmErr);
+          // try a local module copy before falling back to UMD (helps when CDN blocked)
+          try{
+            const ocLocal = await import('/static/js/OrbitControls.module.js');
+            const OrbitControls = ocLocal.OrbitControls || ocLocal.default;
+            initWithTHREE(THREE, OrbitControls);
+            return;
+          }catch(localErr){
+            console.warn('Local module OrbitControls import failed, will try UMD fallbacks', localErr);
+          }
+        }
+
+        // If ES-module controls failed (CDN blocked or import map not honored), try UMD OrbitControls (CDN then local)
+        try{
+          // prefer local UMD OrbitControls first (offline-friendly), then CDN
+          try{ await loadScript('/static/js/OrbitControls.js'); }
+          catch(_localErr){ try{ await loadScript('https://unpkg.com/three@0.158.0/examples/js/controls/OrbitControls.js'); }catch(_cdnErr){ throw _cdnErr; } }
+          const OrbitCtor = THREE.OrbitControls || window.OrbitControls || (window.THREE && window.THREE.OrbitControls);
+          if(!OrbitCtor) throw new Error('OrbitControls not found after UMD load');
+          initWithTHREE(THREE, OrbitCtor);
+          return;
+        }catch(umdErr){
+          console.warn('UMD OrbitControls load failed, will try full UMD three+controls fallback', umdErr);
+        }
+      }catch(e){
+        console.warn('Primary module path failed', e);
+      }
+
+      // Full UMD fallback: load three.min.js + OrbitControls UMD (CDN then local)
+      try{
+        // prefer local UMD first (offline): three + controls
+        try{ await loadScript('/static/js/three.min.js'); await loadScript('/static/js/OrbitControls.js'); }
+        catch(_localErr){ try{ await loadScript('https://unpkg.com/three@0.158.0/build/three.min.js'); await loadScript('https://unpkg.com/three@0.158.0/examples/js/controls/OrbitControls.js'); }catch(_cdnErr){ throw _cdnErr; } }
+        const THREEglob = window.THREE;
+        const Orbit = window.OrbitControls || (THREEglob && THREEglob.OrbitControls);
+        if(!THREEglob || !Orbit) throw new Error('THREE or OrbitControls missing after UMD fallback');
+        initWithTHREE(THREEglob, Orbit);
+        return;
+      }catch(err2){
+        console.warn('UMD full fallback failed', err2);
+        const info = document.getElementById('info'); if(info) info.textContent = '3D module failed to load — offline or blocked. Buttons still work.';
+        const home = document.getElementById('homeBtn'); if(home) home.addEventListener('click', ()=>fetch('/api/home',{method:'POST'}).catch(()=>{}));
+        const reset = document.getElementById('resetBtn'); if(reset) reset.addEventListener('click', ()=>{ alert('Reset view unavailable (3D failed to load)'); });
+      }
+    })();
+  })();
+    </script>
+
+  </body>
+</html>
+

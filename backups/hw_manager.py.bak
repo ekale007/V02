@@ -128,36 +128,6 @@ class ServoManager:
             return
         self.command_queue.put({"type": "move", "channel": ch, "angle": int(angle)})
 
-    def update_servo_pulse(self, channel: int, min_pulse: int, max_pulse: int) -> bool:
-        """Update the min/max pulse for a servo channel at runtime.
-        If hardware is available and the channel was initialized, recreate the
-        `adafruit_motor.servo.Servo` object for that channel with new pulses.
-        Returns True if applied, False otherwise.
-        """
-        try:
-            ch = int(channel)
-        except Exception:
-            return False
-        if not self.hardware_available:
-            return False
-        if ch not in self.servos or not self.servos.get(ch):
-            return False
-        try:
-            # perform local imports to avoid module-level hardware deps
-            from adafruit_motor import servo as adafruit_servo
-
-            pca = self.servos[ch]["pca"]
-            # construct new Servo with updated pulse limits
-            new_s = adafruit_servo.Servo(pca.channels[ch], min_pulse=int(min_pulse), max_pulse=int(max_pulse))
-            with self._lock:
-                # replace servo object while preserving pca reference
-                self.servos[ch]["obj"] = new_s
-            print(f"🔧 Updated pulses for channel {ch}: min={min_pulse} max={max_pulse}")
-            return True
-        except Exception as e:
-            print(f"❌ Failed to update pulses for channel {ch}: {e}")
-            return False
-
     def emergency_stop(self):
         with self._lock:
             try:

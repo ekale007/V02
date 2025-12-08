@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{{ meta.app_name }} - {{ meta.version }}</title>
+  <title>Robot Arm Control - 1.1</title>
   <style>
     body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial,Helvetica,sans-serif;background:#0f1724;color:#e6eef8;padding:18px}
     .card{background:white;padding:16px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.06);margin-bottom:12px}
@@ -25,13 +25,16 @@
     .card{background:#0b1226;color:#e6eef8}
     label{width:110px}
   </style>
-<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='100%25' height='100%25' fill='%230b1226'/><circle cx='8' cy='8' r='6' fill='%2360a5fa'/></svg>">
 </head>
 <body>
+  <div class="card">
+    <h1>Robot Arm Control</h1>
+    <div id="status">Status: <span id="statusText">--</span></div>
+  </div>
+
   <div class="tabs">
     <div class="tab active" id="tab-control" onclick="showTab('control')">Control</div>
     <div class="tab" id="tab-calib" onclick="showTab('calibration')">Calibration</div>
-    <div class="tab" id="tab-3d" onclick="showTab('3d')">3D</div>
   </div>
 
   <div id="panel-control">
@@ -58,14 +61,42 @@
       </div>
 
       <div style="flex:1;min-width:240px">
-        {% for name, channel in servo_map.items() %}
+        
         <div style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between"><div><strong>{{ name|title }}</strong></div><div class="muted">Kanal {{ channel }}</div></div>
-          <input type="range" id="{{ name }}Slider" min="0" max="180" value="{{ positions[name] }}" oninput="onSlide('{{ name }}', this.value)">
-          <div style="display:flex;justify-content:space-between;margin-top:6px"><div>Aktuell:</div><div id="{{ name }}Val">{{ positions[name] }}°</div></div>
-          <div style="margin-top:8px" class="actions"><button onclick="moveHome('{{ name }}')">Home</button><button onclick="test('{{ name }}')">Test</button></div>
+          <div style="display:flex;justify-content:space-between"><div><strong>Base</strong></div><div class="muted">Kanal 0</div></div>
+          <input type="range" id="baseSlider" min="0" max="180" value="90" oninput="onSlide('base', this.value)">
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><div>Aktuell:</div><div id="baseVal">90°</div></div>
+          <div style="margin-top:8px" class="actions"><button onclick="moveHome('base')">Home</button><button onclick="test('base')">Test</button></div>
         </div>
-        {% endfor %}
+        
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between"><div><strong>Shoulder</strong></div><div class="muted">Kanal 1</div></div>
+          <input type="range" id="shoulderSlider" min="0" max="180" value="90" oninput="onSlide('shoulder', this.value)">
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><div>Aktuell:</div><div id="shoulderVal">90°</div></div>
+          <div style="margin-top:8px" class="actions"><button onclick="moveHome('shoulder')">Home</button><button onclick="test('shoulder')">Test</button></div>
+        </div>
+        
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between"><div><strong>Elbow</strong></div><div class="muted">Kanal 2</div></div>
+          <input type="range" id="elbowSlider" min="0" max="180" value="90" oninput="onSlide('elbow', this.value)">
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><div>Aktuell:</div><div id="elbowVal">90°</div></div>
+          <div style="margin-top:8px" class="actions"><button onclick="moveHome('elbow')">Home</button><button onclick="test('elbow')">Test</button></div>
+        </div>
+        
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between"><div><strong>Wrist</strong></div><div class="muted">Kanal 3</div></div>
+          <input type="range" id="wristSlider" min="0" max="180" value="90" oninput="onSlide('wrist', this.value)">
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><div>Aktuell:</div><div id="wristVal">90°</div></div>
+          <div style="margin-top:8px" class="actions"><button onclick="moveHome('wrist')">Home</button><button onclick="test('wrist')">Test</button></div>
+        </div>
+        
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between"><div><strong>Hand</strong></div><div class="muted">Kanal 4</div></div>
+          <input type="range" id="handSlider" min="0" max="180" value="0" oninput="onSlide('hand', this.value)">
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><div>Aktuell:</div><div id="handVal">0°</div></div>
+          <div style="margin-top:8px" class="actions"><button onclick="moveHome('hand')">Home</button><button onclick="test('hand')">Test</button></div>
+        </div>
+        
 
         <div class="card actions" style="margin-top:8px">
           <button onclick="moveAllHome()">Alle Home</button>
@@ -90,20 +121,6 @@
     </div>
   </div>
 
-  <div id="panel-3d" style="display:none">
-    <div class="card">
-      <h2>3D Simulation</h2>
-      <p class="muted">Interactive 3D view. You can open the full 3D page in a separate tab.</p>
-      <div style="margin-bottom:8px">
-        <button onclick="open3DFull()">Open full 3D page</button>
-        <button onclick="reload3DIframe()">Reload 3D iframe</button>
-      </div>
-      <div style="height:640px;">
-        <iframe id="sim3dFrame" src="/3d" style="width:100%;height:100%;border:0;border-radius:8px;background:#071127"></iframe>
-      </div>
-    </div>
-  </div>
-
 <script>
 /* ---------- API helper ---------- */
 async function api(path, opts){
@@ -112,29 +129,24 @@ async function api(path, opts){
 }
 
 /* ---------- Control panel handlers ---------- */
-window.onSlide = function(j, v){
+function onSlide(j, v){
   document.getElementById(j+'Val').textContent = v+'°';
   api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:parseInt(v)})});
 }
-window.moveHome = function(j){ const h = j==='hand'?0:90; document.getElementById(j+'Slider').value = h; document.getElementById(j+'Val').textContent = h+'°'; api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:h})}); }
-window.test = function(j){ api('/api/test/'+j,{method:'POST'}); }
-window.moveAllHome = function(){ api('/api/home',{method:'POST'}); }
-window.wave = function(){ if(confirm('Starte Winken?')) api('/api/program/wave',{method:'POST'}); }
-window.pick = function(){ if(confirm('Starte Pick & Place?')) api('/api/program/pickplace',{method:'POST'}); }
-window.emergency = function(){ if(confirm('NOT-AUS?')) api('/api/emergency',{method:'POST'}); }
+function moveHome(j){ const h = j==='hand'?0:90; document.getElementById(j+'Slider').value = h; document.getElementById(j+'Val').textContent = h+'°'; api('/api/move',{method:'POST', body: JSON.stringify({joint:j, angle:h})}); }
+function test(j){ api('/api/test/'+j,{method:'POST'}); }
+function moveAllHome(){ api('/api/home',{method:'POST'}); }
+function wave(){ if(confirm('Starte Winken?')) api('/api/program/wave',{method:'POST'}); }
+function pick(){ if(confirm('Starte Pick & Place?')) api('/api/program/pickplace',{method:'POST'}); }
+function emergency(){ if(confirm('NOT-AUS?')) api('/api/emergency',{method:'POST'}); }
 
 /* ---------- Tabs ---------- */
 function showTab(name){
   document.getElementById('panel-control').style.display = name==='control' ? 'block':'none';
   document.getElementById('panel-calibration').style.display = name==='calibration' ? 'block':'none';
-  const p3 = document.getElementById('panel-3d'); if(p3) p3.style.display = name==='3d' ? 'block':'none';
   document.getElementById('tab-control').classList.toggle('active', name==='control');
   document.getElementById('tab-calib').classList.toggle('active', name==='calibration');
-  const t3 = document.getElementById('tab-3d'); if(t3) t3.classList.toggle('active', name==='3d');
 }
-
-function open3DFull(){ window.open('/3d','_blank'); }
-function reload3DIframe(){ const f = document.getElementById('sim3dFrame'); if(f) f.src = '/3d?ts=' + Date.now(); }
 
 /* ---------- Calibration UI ---------- */
 let CALIB = null;
@@ -306,193 +318,3 @@ async function applySimConfig(save=false){
   const offsets = {
     shoulder: parseInt(document.getElementById('sim-offset-shoulder').value || 0),
     elbow: parseInt(document.getElementById('sim-offset-elbow').value || 0),
-    wrist: parseInt(document.getElementById('sim-offset-wrist').value || 0),
-    hand: parseInt(document.getElementById('sim-offset-hand').value || 0)
-  };
-  const res = await api('/api/simconfig', {method:'POST', body: JSON.stringify({lengths: lengths, scale: scale, save: save})});
-  if(res && res.success){
-    // POST axes and offsets so backend picks up new mappings
-    await api('/api/simconfig', {method:'POST', body: JSON.stringify({axes: axes, offsets: offsets, save: save})});
-    const updated = await api('/api/simconfig',{method:'GET'});
-    SIM = updated;
-    buildCalibUI();
-  } else {
-    alert('Fehler beim Anwenden der Sim-Konfiguration');
-  }
-}
-
-async function saveSimConfig(save){
-  await applySimConfig(save);
-}
-
-/* ---------- 2D Simulation with trace, zoom, snapshot ---------- */
-let latestPositions = { base:90, shoulder:90, elbow:90, wrist:90, hand:0 };
-let currentPositions = Object.assign({}, latestPositions);
-let targetPositions = Object.assign({}, latestPositions);
-let simZoom = 1.0;
-let trace = [];
-const TRACE_MAX = 200;
-
-function degToRad(d){ return d * Math.PI / 180; }
-function angleToRadForLink(a){ return degToRad(a - 90); }
-
-function drawArm(positions){
-  try{
-  
-  
-  const c = document.getElementById('armCanvas');
-  if(!c) return;
-  const ctx = c.getContext('2d');
-  const width = c.width; const height = c.height;
-  ctx.clearRect(0,0,width,height);
-  // background
-  ctx.fillStyle = '#0b1220';
-  ctx.fillRect(0,0,width,height);
-
-  const sim = SIM || {lengths:{shoulder:90,elbow:70,wrist:50,hand:20}, origin:{x:width/2,y:height-60}, scale:1.0};
-  const L = sim.lengths;
-  const ox = (typeof sim.origin.x === 'number') ? sim.origin.x : Math.floor(width/2);
-  const oy = (typeof sim.origin.y === 'number') ? sim.origin.y : Math.floor(height*0.78);
-  const scale = (sim.scale || 1.0) * simZoom;
-
-  // 3D FK (base around Z, shoulder/elbow/wrist around Y, hand around X)
-  function rotY(theta, v){ const c=Math.cos(theta), s=Math.sin(theta); return {x: v.x*c + v.z*s, y: v.y, z: -v.x*s + v.z*c}; }
-  function rotZ(theta, v){ const c=Math.cos(theta), s=Math.sin(theta); return {x: v.x*c - v.y*s, y: v.x*s + v.y*c, z: v.z}; }
-  function add(a,b){ return {x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}; }
-
-  // apply offsets from SIM if present
-  const offs = SIM.offsets || {shoulder:0, elbow:0, wrist:0, hand:0};
-  const sh = degToRad((positions.shoulder||90) + (offs.shoulder||0) - 90);
-  const el = degToRad((positions.elbow||90) + (offs.elbow||0) - 90);
-  const wr = degToRad((positions.wrist||90) + (offs.wrist||0) - 90);
-  const base = degToRad((positions.base||90) - 90);
-
-  const p0 = {x:0,y:0,z:0};
-  // shoulder: at 90° (sh=0) should point along +Z, so initial vector along Z
-  const p1 = rotY(sh, {x: 0, y:0, z: L.shoulder});
-  // elbow & wrist: at 90° (el=0, wr=0) should point along +X, so initial vectors along X
-  const p2 = add(p1, rotY(sh+el, {x: L.elbow, y:0, z:0}));
-  const p3 = add(p2, rotY(sh+el+wr, {x: L.wrist, y:0, z:0}));
-  const p4 = add(p3, rotY(sh+el+wr, {x: L.hand, y:0, z:0}));
-
-  // apply base rotation around Z and scale
-  function toCanvas(pt){ const r = rotZ(base, pt); return { x: ox + r.x*scale, y: oy - r.z*scale }; }
-
-  const rp0 = toCanvas(p0);
-  const rp1 = toCanvas(p1);
-  const rp2 = toCanvas(p2);
-  const rp3 = toCanvas(p3);
-  const rp4 = toCanvas(p4);
-
-  // draw trace (side end-effector trace)
-  if(trace.length>0){ ctx.strokeStyle = 'rgba(99,102,241,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); for(let i=0;i<trace.length;i++){ const t = trace[i]; if(i===0) ctx.moveTo(t.x,t.y); else ctx.lineTo(t.x,t.y);} ctx.stroke(); }
-
-  // draw links (side view uses x vs z mapping already applied)
-  ctx.lineWidth = 8; ctx.lineCap='round';
-  ctx.strokeStyle = '#60a5fa'; ctx.beginPath(); ctx.moveTo(rp0.x,rp0.y); ctx.lineTo(rp1.x,rp1.y); ctx.stroke();
-  ctx.strokeStyle = '#93c5fd'; ctx.beginPath(); ctx.moveTo(rp1.x,rp1.y); ctx.lineTo(rp2.x,rp2.y); ctx.stroke();
-  ctx.strokeStyle = '#7c3aed'; ctx.beginPath(); ctx.moveTo(rp2.x,rp2.y); ctx.lineTo(rp3.x,rp3.y); ctx.stroke();
-  ctx.strokeStyle = '#f59e0b'; ctx.lineWidth=6; ctx.beginPath(); ctx.moveTo(rp3.x,rp3.y); ctx.lineTo(rp4.x,rp4.y); ctx.stroke();
-
-  // joints
-  function jointDot(pt,color){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(pt.x,pt.y,8,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=2; ctx.stroke(); }
-  jointDot(rp0,'#111827'); jointDot(rp1,'#ffffff'); jointDot(rp2,'#ffffff'); jointDot(rp3,'#ffffff');
-  ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.arc(rp4.x,rp4.y,5,0,Math.PI*2); ctx.fill();
-
-  // labels
-  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='12px Arial'; ctx.fillText('C:'+positions.base+'°',8,18);
-
-  // add to trace
-  trace.push({x:rp4.x,y:rp4.y}); if(trace.length>TRACE_MAX) trace.shift();
-  // also draw top view from same FK
-  try{ drawTopFromFK([p0,p1,p2,p3,p4], positions); }catch(e){}
-
-  // draw coordinate axes at base (A/B/C -> X/Y/Z)
-  function drawAxes(){
-    const ax = 36*scale; const ay = 36*scale; ctx.lineWidth=2;
-    // X (A) - right
-    ctx.strokeStyle='#ef4444'; ctx.beginPath(); ctx.moveTo(rp0.x, rp0.y); ctx.lineTo(rp0.x+ax, rp0.y); ctx.stroke(); ctx.fillStyle='#ef4444'; ctx.fillText('A', rp0.x+ax+6, rp0.y+4);
-    // Y (B) - down
-    ctx.strokeStyle='#60a5fa'; ctx.beginPath(); ctx.moveTo(rp0.x, rp0.y); ctx.lineTo(rp0.x, rp0.y+ay); ctx.stroke(); ctx.fillStyle='#60a5fa'; ctx.fillText('B', rp0.x+4, rp0.y+ay+12);
-    // Z (C) - up (draw as vertical arrow)
-    ctx.strokeStyle='#f59e0b'; ctx.beginPath(); ctx.moveTo(rp0.x-ax*0.5, rp0.y+ay*0.2); ctx.lineTo(rp0.x-ax*0.5, rp0.y-ay); ctx.stroke(); ctx.fillStyle='#f59e0b'; ctx.fillText('C', rp0.x-ax*0.5-10, rp0.y-ay-4);
-  }
-  drawAxes();
-
-  // draw hand orientation marker (use hand offset)
-  const handDeg = ((positions.hand||0) + (offs.hand||0) - 90);
-  const handRad = degToRad(handDeg);
-  // draw a small orientation line on side view (rotate in screen plane)
-  ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(rp4.x, rp4.y); ctx.lineTo(rp4.x + 18*Math.cos(handRad), rp4.y + 18*Math.sin(handRad)); ctx.stroke();
-  // end try
-  }catch(e){
-    console.error('drawArm error', e);
-    const s = document.getElementById('simStatus'); if(s) s.textContent = 'Sim error: '+(e && e.message? e.message : e);
-  }
-}
-
-// animation loop: interpolate currentPositions -> targetPositions
-function animate(){
-  const lerp = (a,b,t) => a + (b-a)*t;
-  let changed = false;
-  for(const k of Object.keys(targetPositions)){
-    const cur = currentPositions[k] || 0;
-    const tgt = targetPositions[k] || 0;
-    const next = Math.abs(tgt-cur) < 0.5 ? tgt : lerp(cur, tgt, 0.22);
-    if(Math.abs(next-cur) > 0.01) changed = true;
-    currentPositions[k] = next;
-  }
-  drawArm(currentPositions);
-  // update sim status
-  try{ const s = document.getElementById('simStatus'); if(s) s.textContent = 'Sim running — pos: B='+Math.round(currentPositions.base||0)+' S='+Math.round(currentPositions.shoulder||0)+' E='+Math.round(currentPositions.elbow||0); }catch(e){}
-  requestAnimationFrame(animate);
-}
-
-function drawTopFromFK(points3d, positions){
-  const c = document.getElementById('topCanvas'); if(!c) return; const ctx = c.getContext('2d'); const w=c.width; const h=c.height; ctx.clearRect(0,0,w,h); ctx.fillStyle='#071029'; ctx.fillRect(0,0,w,h);
-  const sim = SIM || {lengths:{shoulder:90,elbow:70,wrist:50,hand:20}, origin:{x:200,y:300}, scale:1.0};
-  const scale = (sim.scale || 1.0) * simZoom * 0.5; // smaller scale for top view
-  const cx = w/2; const cy = h/2;
-  // apply base rotation (points are computed before base rotation)
-  const base = degToRad((positions.base||90) - 90);
-  function rotZ(theta, v){ const c=Math.cos(theta), s=Math.sin(theta); return {x: v.x*c - v.y*s, y: v.x*s + v.y*c, z: v.z}; }
-  const pts = points3d.map(p => rotZ(base, p));
-  // map to top canvas (X -> right, Y -> down)
-  const screen = pts.map(p => ({ x: cx + p.x*scale, y: cy + p.y*scale }));
-
-  // draw base circle
-  ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(cx,cy, Math.min(w,h)/2 - 8, 0, Math.PI*2); ctx.stroke();
-  // draw projection of links
-  ctx.lineWidth = 4; ctx.strokeStyle = '#60a5fa'; ctx.beginPath(); ctx.moveTo(screen[0].x, screen[0].y); for(let i=1;i<screen.length;i++){ ctx.lineTo(screen[i].x, screen[i].y); } ctx.stroke();
-  // joints
-  for(let i=0;i<screen.length;i++){ ctx.fillStyle = i===screen.length-1? '#60a5fa':'#fff'; ctx.beginPath(); ctx.arc(screen[i].x, screen[i].y, i===0?6:5,0,Math.PI*2); ctx.fill(); }
-  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='11px Arial'; ctx.fillText('C:'+positions.base+'°',6,12);
-}
-
-function zoom(f){ simZoom *= f; }
-function resetView(){ simZoom = SIM.scale || 1.0; trace = []; }
-function clearTrace(){ trace = []; }
-function exportSnapshot(){ const c=document.getElementById('armCanvas'); const data=c.toDataURL('image/png'); const w=window.open('about:blank','_blank'); w.document.write('<img src="'+data+'"/>'); }
-
-/* ---------- Polling & sync ---------- */
-async function poll(){
-  try{
-    const s = await api('/api/status',{method:'GET'});
-    const statusEl = document.getElementById('statusText');
-    if(statusEl) statusEl.textContent = s.hardware_available? 'Hardware OK':'Simulation';
-    latestPositions = Object.assign({}, latestPositions, s.positions || {});
-    // set targets instead of jumping
-    targetPositions = Object.assign({}, targetPositions, s.positions || {});
-    for(const [k,v] of Object.entries(s.positions||{})){
-      const el = document.getElementById(k+'Slider');
-      if(document.activeElement !== el){ el.value = v; document.getElementById(k+'Val').textContent = v+'°'; }
-    }
-  }catch(e){}
-  setTimeout(poll, 400);
-}
-
-/* ---------- Init ---------- */
-document.addEventListener('DOMContentLoaded', async ()=>{ await reloadCalibration(); poll(); animate(); });
-</script>
-</body>
-</html>
