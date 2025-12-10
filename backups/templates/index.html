@@ -23,6 +23,7 @@
     .sim-legend{color:#f9fafb;font-size:0.9rem}
   </style>
   <script>
+  // (removed SERVO_MAP injection)
   // Preflight status fetch: diagnostic only. Updates statusText and shows positions.
   (async function(){
     try{
@@ -48,6 +49,7 @@
     <div class="card sim-wrapper">
       <div style="flex: 0 0 520px;">
         <canvas id="armCanvas" width="520" height="420"></canvas>
+        <!-- 3D viewer removed -->
         <div style="margin-top:8px;color:#374151;font-size:0.9rem">
           <span class="sim-legend">2D-Simulation (Seitenansicht). Basis-Rotation wird als Drehung angewendet.</span>
           <div style="margin-top:6px">
@@ -291,7 +293,8 @@ function drawArm(positions){
 
   const sim = SIM || {lengths:{shoulder:90,elbow:70,wrist:50,hand:20}, origin:{x:width/2,y:height-60}};
   const L = sim.lengths;
-  const ox = sim.origin.x; const oy = sim.origin.y;
+  const ox = (sim.origin && sim.origin.x) ? sim.origin.x : Math.round(width/2);
+  const oy = (sim.origin && sim.origin.y) ? sim.origin.y : Math.round(height-60);
 
   // compute local positions
   const a1 = angleToRadForLink(positions.shoulder || 90);
@@ -345,6 +348,15 @@ function zoom(f){ simZoom *= f; }
 function resetView(){ simZoom = SIM.scale || 1.0; trace = []; }
 function clearTrace(){ trace = []; }
 function exportSnapshot(){ const c=document.getElementById('armCanvas'); const data=c.toDataURL('image/png'); const w=window.open('about:blank','_blank'); w.document.write('<img src="'+data+'"/>'); }
+
+// 3D viewer modal handlers
+document.addEventListener('DOMContentLoaded', ()=>{
+  const openBtn = document.getElementById('open3dBtn'); const closeBtn = document.getElementById('close3dBtn'); const modal = document.getElementById('viewerModal');
+  if(openBtn && modal){ openBtn.addEventListener('click', ()=>{ modal.style.display='flex'; document.getElementById('viewerIframe').src = '/block_arm'; }); }
+  if(closeBtn && modal){ closeBtn.addEventListener('click', ()=>{ modal.style.display='none'; document.getElementById('viewerIframe').src = 'about:blank'; }); }
+});
+
+// (3D viewer handlers removed)
 
 /* ---------- Polling & sync ---------- */
 async function poll(){

@@ -20,6 +20,9 @@ class ServoManager:
         # store last-known angles per channel for smooth moves
         self._last_angles: Dict[int, float] = {}
         self.command_queue = queue.Queue()
+        # per-channel active targets (used by set_target to avoid queue churn)
+        self._targets: Dict[int, dict] = {}
+        self._target_lock = threading.Lock()
         self.running = True
         self._lock = threading.Lock()
 
@@ -100,187 +103,193 @@ class ServoManager:
             self.hardware_available = False
             return False
 
+    def _speed_to_dps(self, s, channel=None):
+        """Convert a 1..100 speed value to degrees-per-second, using per-joint tuning if available."""
+        try:
+            s = int(s)
+        except Exception:
+            s = 50
+        s = max(1, min(100, s))
+        min_dps = 12.0
+        max_dps = 360.0
+        try:
+            motion = self._load_calib_motion()
+            if channel is not None and isinstance(self.channel_to_joint, dict):
+                joint = self.channel_to_joint.get(channel)
+                if joint and isinstance(motion, dict):
+                    mj = motion.get(joint)
+                    if isinstance(mj, dict):
+                        if mj.get('min_dps') is not None:
+                            min_dps = float(mj.get('min_dps'))
+                        if mj.get('max_dps') is not None:
+                            max_dps = float(mj.get('max_dps'))
+        except Exception:
+            pass
+        ratio = max_dps / min_dps
+        p = s / 100.0
+        return min_dps * (ratio ** p)
+
+    def _dps_from_mode(self, mode, channel=None):
+        """Resolve a named mode ('slow'|'medium'|'fast') to a degrees-per-second value using calib motion.speed_modes if present.
+        Falls back to using min_dps/max_dps mapping where medium maps to geometric mean.
+        """
+        try:
+            if not mode:
+                return None
+            mode = str(mode).lower()
+        except Exception:
+            return None
+        try:
+            motion = self._load_calib_motion()
+            if channel is not None and isinstance(self.channel_to_joint, dict):
+                joint = self.channel_to_joint.get(channel)
+                if joint and isinstance(motion, dict):
+                    mj = motion.get(joint)
+                    if isinstance(mj, dict):
+                        sm = mj.get('speed_modes')
+                        if isinstance(sm, dict) and sm.get(mode) is not None:
+                            return float(sm.get(mode))
+            # fallback: derive from min/max dps
+            min_dps = 12.0
+            max_dps = 360.0
+            if isinstance(motion, dict) and channel is not None and isinstance(self.channel_to_joint, dict):
+                joint = self.channel_to_joint.get(channel)
+                if joint:
+                    mj = motion.get(joint) or {}
+                    if mj.get('min_dps') is not None:
+                        min_dps = float(mj.get('min_dps'))
+                    if mj.get('max_dps') is not None:
+                        max_dps = float(mj.get('max_dps'))
+            if mode == 'slow':
+                return min_dps
+            if mode == 'fast':
+                return max_dps
+            # medium: geometric mean for smooth interpolation
+            return (min_dps * max_dps) ** 0.5
+        except Exception:
+            return None
+
     def _hardware_loop(self):
         print("🚀 Hardware-Thread startet...")
         if not self._init_hardware():
             print("⚠️ Hardware nicht verfügbar — laufe im Simulationsmodus")
-
+        # time-based interpolation loop (avoid jitter by using small dt steps)
+        last_ts = time.time()
+        loop_sleep = 0.02  # 20ms base tick for smooth updates
         while self.running:
             try:
-                cmd = self.command_queue.get(timeout=0.1)
-                print(f"🔁 Hardware-Thread: empfangenes Kommando: {cmd}")
-                if cmd["type"] == "move":
-                    ch = cmd["channel"]
-                    angle = int(cmd.get("angle"))
-                    speed = cmd.get("speed")
-                    # Map `speed` (1..100) to degrees-per-second and compute duration
-                    # Use a larger step interval to avoid high-frequency tiny updates
-                    def _speed_to_dps(s, channel=None):
+                # process at most one queued command per tick to keep responsiveness
+                try:
+                    cmd = self.command_queue.get_nowait()
+                except queue.Empty:
+                    cmd = None
+
+                if cmd:
+                    # basic command processing
+                    try:
+                        if cmd.get('type') == 'move':
+                            ch = cmd.get('channel')
+                            angle = int(cmd.get('angle'))
+                            speed = cmd.get('speed')
+                            speed_mode = cmd.get('speed_mode')
+                            # if a newer target exists we prefer that
+                            with self._target_lock:
+                                if ch in self._targets:
+                                    try:
+                                        self.command_queue.task_done()
+                                    except Exception:
+                                        pass
+                                    cmd = None
+                                else:
+                                    self.set_target(ch, angle, speed=speed, speed_mode=speed_mode)
+                        elif cmd.get('type') == 'stop':
+                            print('⛔ Not-Aus: setze alle Servos auf Home')
+                            if self.hardware_available:
+                                for ch in list(self.servos.keys()):
+                                    if self.servos.get(ch):
+                                        try:
+                                            self.servos[ch]['obj'].angle = 90
+                                        except Exception:
+                                            pass
+                            with self._lock:
+                                try:
+                                    while True:
+                                        self.command_queue.get_nowait()
+                                        self.command_queue.task_done()
+                                except queue.Empty:
+                                    pass
+                    finally:
                         try:
-                            s = int(s)
-                        except Exception:
-                            s = 50
-                        s = max(1, min(100, s))
-                        # Use a geometric/exponential mapping for perceptual control:
-                        # slowest: higher than before so 1% still moves noticeably,
-                        # fastest: allow a larger max so 100% is clearly faster than 50%.
-                        # Tuned mapping for perceptual separation:
-                        # increase low-end speed and cap the top speed to reduce jitter.
-                        # default fallbacks
-                        min_dps = 12.0
-                        max_dps = 360.0
-                        try:
-                            # attempt to read per-joint motion tuning from calib.json
-                            motion = self._load_calib_motion()
-                            if channel is not None and isinstance(self.channel_to_joint, dict):
-                                joint = self.channel_to_joint.get(channel)
-                                if joint and isinstance(motion, dict):
-                                    mj = motion.get(joint)
-                                    if isinstance(mj, dict):
-                                        # prefer explicit per-joint values when present
-                                        if mj.get('min_dps') is not None:
-                                            min_dps = float(mj.get('min_dps'))
-                                        if mj.get('max_dps') is not None:
-                                            max_dps = float(mj.get('max_dps'))
+                            self.command_queue.task_done()
                         except Exception:
                             pass
-                        # geometric interpolation: min * (ratio)^(p) where p = s/100
-                        ratio = max_dps / min_dps
-                        p = s / 100.0
-                        return min_dps * (ratio ** p)
 
-                    if self.hardware_available and ch in self.servos and self.servos[ch]:
+                # step active targets based on elapsed time
+                now = time.time()
+                dt = max(0.0, now - last_ts)
+                last_ts = now
+                with self._target_lock:
+                    for ch, tgt in list(self._targets.items()):
                         try:
-                            # get current angle if known, otherwise try to read from object
-                            cur = self._last_angles.get(ch)
-                            if cur is None:
-                                try:
-                                    cur = float(self.servos[ch]["obj"].angle)
-                                except Exception:
-                                    cur = float(angle)
-                            # If there is a newer move for the same channel queued, skip this older command
-                            try:
-                                # access underlying deque (non-public) to detect newer moves
-                                pending = list(self.command_queue.queue)
-                                newer = any((p.get("type") == "move" and p.get("channel") == ch) for p in pending)
-                                if newer:
-                                    # skip this stale move in favor of the newer one(s)
-                                    self.command_queue.task_done()
-                                    continue
-                            except Exception:
-                                pass
+                            target = float(tgt.get('angle'))
+                            # resolve dps from either numeric speed, mode, or per-joint defaults
+                            dps = None
+                            if tgt.get('speed_mode') is not None:
+                                dps = self._dps_from_mode(tgt.get('speed_mode'), channel=ch)
+                            if dps is None and tgt.get('speed') is not None:
+                                dps = self._speed_to_dps(tgt.get('speed'), channel=ch)
+                            if dps is None:
+                                dps = self._speed_to_dps(50, channel=ch)
 
-                            deg = abs(angle - cur)
-                            # only attempt smoothing for meaningful moves
-                            if speed is not None and deg > 0.5:
-                                dps = _speed_to_dps(speed, channel=ch)
-                                # compute duration based on degrees / deg-per-sec
-                                duration = max(0.0, deg / dps)
-                                # choose a conservative step interval (lower update rate reduces jitter)
-                                step_interval = 0.06
-                                # compute intended steps; allow small durations to still interpolate
-                                steps = max(1, min(500, int(duration / step_interval)))
-                                # if duration is short but non-zero, force at least 2 steps so
-                                # 50% vs 100% aren't both collapsed into the same atomic write
-                                if steps == 1 and duration > 0.03:
-                                    steps = 2
-                                if steps == 1:
-                                    # atomic set for tiny/no-duration moves
+                            cur = self._last_angles.get(ch, target)
+                            if abs(target - cur) < 0.5:
+                                # reached target
+                                self._last_angles[ch] = float(target)
+                                if self.hardware_available and ch in self.servos and self.servos[ch]:
                                     try:
-                                        obj = self.servos[ch]["obj"]
-                                        try:
-                                            obj_name = type(obj).__name__
-                                        except Exception:
-                                            obj_name = str(obj)
-                                        print(f"🖊️ [WRITE] Channel {ch} target={angle} obj={obj_name}")
-                                        obj.angle = angle
-                                    except Exception as e:
-                                        print(f"❌ Fehler beim Schreiben auf Kanal {ch}: {e}")
-                                else:
-                                    sleep_per = duration / steps if steps > 0 else step_interval
-                                    for i in range(1, steps + 1):
-                                        interp = cur + (angle - cur) * (i / steps)
-                                        try:
-                                            # round to avoid tiny float jitter when servo expects ints
-                                            obj = self.servos[ch]["obj"]
-                                            try:
-                                                obj_name = type(obj).__name__
-                                            except Exception:
-                                                obj_name = str(obj)
-                                            val = round(interp, 2)
-                                            print(f"🖊️ [WRITE] Channel {ch} interp={val} step={i}/{steps} obj={obj_name}")
-                                            obj.angle = val
-                                        except Exception as e:
-                                            print(f"❌ Fehler beim schrittweisen Schreiben auf Kanal {ch}: {e}")
-                                        time.sleep(sleep_per)
-                                print(f"📡 Kanal {ch} → {angle}° (smooth over {duration:.2f}s, dps={dps:.1f})")
-                            else:
-                                # immediate set
-                                try:
-                                    obj = self.servos[ch]["obj"]
-                                    try:
-                                        obj_name = type(obj).__name__
+                                        self.servos[ch]['obj'].angle = round(target, 2)
                                     except Exception:
-                                        obj_name = str(obj)
-                                    print(f"🖊️ [WRITE] Channel {ch} immediate target={angle} obj={obj_name}")
-                                    obj.angle = angle
-                                except Exception as e:
-                                    print(f"❌ Fehler beim Schreiben auf Kanal {ch}: {e}")
-                            # remember last angle
-                            self._last_angles[ch] = float(angle)
-                        except Exception as e:
-                            print(f"❌ Fehler beim Schreiben auf Kanal {ch}: {e}")
-                    else:
-                        # simulation mode: compute a realistic duration and sleep
-                        if speed is not None:
-                            try:
-                                cur = self._last_angles.get(ch, float(angle))
-                                deg = abs(angle - cur)
-                                dps = _speed_to_dps(speed)
-                                duration = max(0.0, deg / dps)
-                                if duration > 0:
-                                    time.sleep(duration)
-                            except Exception:
-                                pass
-                        self._last_angles[ch] = float(angle)
-                elif cmd["type"] == "stop":
-                    print("⛔ Not-Aus: setze alle Servos auf Home")
-                    if self.hardware_available:
-                        for ch in list(self.servos.keys()):
-                            if self.servos.get(ch):
+                                        pass
                                 try:
-                                    self.servos[ch]["obj"].angle = 90
+                                    del self._targets[ch]
                                 except Exception:
                                     pass
-                    with self._lock:
-                        try:
-                            while True:
-                                self.command_queue.get_nowait()
-                                self.command_queue.task_done()
-                        except queue.Empty:
+                                continue
+
+                            # compute move amount based on dps and elapsed dt
+                            # clamp by optional per-joint step_interval to avoid too-large jumps
+                            move_delta = dps * dt
+                            # check for configured max step interval (we keep move_delta as limit)
+                            # apply move
+                            delta = target - cur
+                            step = max(-move_delta, min(move_delta, delta))
+                            new_angle = cur + step
+                            if self.hardware_available and ch in self.servos and self.servos[ch]:
+                                try:
+                                    self.servos[ch]['obj'].angle = round(new_angle, 2)
+                                except Exception as e:
+                                    print(f"❌ Fehler beim schrittweisen Schreiben auf Kanal {ch}: {e}")
+                            self._last_angles[ch] = float(new_angle)
+                        except Exception:
                             pass
 
-                self.command_queue.task_done()
-            except queue.Empty:
-                continue
+                # sleep a short while to yield CPU and keep low-latency
+                time.sleep(loop_sleep)
             except Exception as e:
                 print(f"❌ Hardware-Thread Exception: {e}")
 
-    def move_servo(self, channel: int, angle: int, speed: int = None):
+    def move_servo(self, channel: int, angle: int, speed: int = None, speed_mode: str = None):
         try:
             ch = int(channel)
         except Exception:
             return
         if ch < 0 or ch > 15:
             return
-        cmd = {"type": "move", "channel": ch, "angle": int(angle)}
-        if speed is not None:
-            try:
-                cmd["speed"] = int(speed)
-            except Exception:
-                pass
-        print(f"📥 Enqueue move command: channel={ch} angle={int(angle)} speed={cmd.get('speed')}")
-        self.command_queue.put(cmd)
+        # Use target-steering to avoid flooding the queue with intermediate moves
+        try:
+            self.set_target(ch, int(angle), speed=speed, speed_mode=speed_mode)
+        except Exception:
+            pass
 
     def update_servo_pulse(self, channel: int, min_pulse: int, max_pulse: int) -> bool:
         """Update the min/max pulse for a servo channel at runtime.
@@ -311,6 +320,26 @@ class ServoManager:
         except Exception as e:
             print(f"❌ Failed to update pulses for channel {ch}: {e}")
             return False
+
+    def set_target(self, channel: int, angle: float, speed: int = None, speed_mode: str = None):
+        """Set an active target for a channel. The hardware thread will step toward this target.
+        This replaces flooding the command queue with many moves and reduces churn.
+        """
+        try:
+            ch = int(channel)
+        except Exception:
+            return False
+        if ch < 0 or ch > 15:
+            return False
+        with self._target_lock:
+            self._targets[ch] = {
+                'angle': float(angle),
+                'speed': int(speed) if speed is not None else None,
+                'speed_mode': str(speed_mode) if speed_mode is not None else None,
+                'ts': time.time()
+            }
+        print(f"📥 Set target: channel={ch} angle={angle} speed={speed} speed_mode={speed_mode}")
+        return True
 
     def emergency_stop(self):
         with self._lock:

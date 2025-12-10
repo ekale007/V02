@@ -1,0 +1,423 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Block Arm Demo</title>
+    <style>
+      body { margin: 0; font-family: Arial, Helvetica, sans-serif; display: flex; height: 100vh; }
+      #ui { width: 300px; padding: 12px; box-sizing: border-box; background:#f4f4f4; border-right:1px solid #ddd; overflow:auto }
+      #canvas-wrap { flex:1; display:flex; align-items:center; justify-content:center; background:linear-gradient(#e8f0ff,#ffffff); }
+      .control { margin:8px 0 }
+      label { display:block; font-size:13px; margin-bottom:4px }
+      input[type=range] { width:100% }
+      button { margin-top:8px; padding:8px 12px; font-size:14px }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <h3>Low-Poly Block Arm</h3>
+      <p>Interactive block-arm built from boxes. Sliders control joints. Click <b>Export .glb</b> to save a glTF binary.</p>
+
+      <div class="control">
+        <label>Base (turntable)</label>
+        <input id="s_base" type="range" min="-180" max="180" value="0">
+      </div>
+      <div class="control">
+        <label>Shoulder</label>
+        <input id="s_shoulder" type="range" min="-90" max="90" value="30">
+      </div>
+      <div class="control">
+        <label>Elbow</label>
+        <input id="s_elbow" type="range" min="-135" max="135" value="-30">
+      </div>
+      <div class="control">
+        <label>Wrist</label>
+        <input id="s_wrist" type="range" min="-90" max="90" value="0">
+      </div>
+      <div class="control">
+        <label>Hand (gripper twist)</label>
+        <input id="s_hand" type="range" min="-180" max="180" value="0">
+      </div>
+
+      <div style="margin:8px 0">
+        <label for="preset_select">Preset</label>
+        <select id="preset_select">
+          <option value="simple_block_arm">Simple Block Arm</option>
+        </select>
+        <button id="btn_load_preset">Load Preset</button>
+        <button id="btn_save_preset">Save Preset</button>
+      </div>
+      <details id="settings_panel" style="margin-top:10px">
+        <summary>Joint Settings</summary>
+        <div style="margin-top:8px">
+          <label for="joint_select">Joint</label>
+          <select id="joint_select"></select>
+          <label style="margin-top:6px">Length (m)<input id="joint_length" type="number" step="0.01" style="width:100%"></label>
+          <label>Offset Angle (deg)<input id="joint_offset" type="number" step="1" style="width:100%"></label>
+          <label>Block Type
+            <select id="joint_blocktype" style="width:100%">
+              <option value="box">Box</option>
+              <option value="cylinder">Cylinder</option>
+            </select>
+          </label>
+          <button id="btn_apply_joint" style="margin-top:6px">Apply Joint Settings</button>
+        </div>
+      </details>
+      <button id="btn_export">Export .glb</button>
+      <button id="btn_reset">Reset</button>
+      <hr>
+      <p style="font-size:12px;color:#666">Tip: run a local HTTP server and open <code>/templates/block_arm.html</code>.</p>
+    </div>
+
+    <div id="canvas-wrap">
+      <canvas id="c"></canvas>
+    </div>
+
+    <script type="module">
+      // Use esm.sh which rewrites internal imports (avoids bare 'three' specifier errors)
+      import * as THREE from 'https://esm.sh/three@0.152.2';
+      import { OrbitControls } from 'https://esm.sh/three@0.152.2/examples/jsm/controls/OrbitControls.js';
+      import { GLTFExporter } from 'https://esm.sh/three@0.152.2/examples/jsm/exporters/GLTFExporter.js';
+
+      const canvas = document.getElementById('c');
+      const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf2f7ff);
+
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+      camera.position.set(2.5, 2.0, 3.5);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.8, 0);
+      controls.update();
+
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x8888aa, 0.9);
+      scene.add(hemi);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+      dir.position.set(5,10,7);
+      scene.add(dir);
+
+      // ground
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(10,10), new THREE.MeshStandardMaterial({ color:'#dfefff' }));
+      ground.rotation.x = -Math.PI/2; ground.position.y = -0.01; scene.add(ground);
+
+      // UI inputs map (names must match config joint names)
+      const inputs = {
+        base: document.getElementById('s_base'),
+        shoulder: document.getElementById('s_shoulder'),
+        elbow: document.getElementById('s_elbow'),
+        wrist: document.getElementById('s_wrist'),
+        hand: document.getElementById('s_hand')
+      };
+
+      function degToRad(v){ return v * Math.PI / 180; }
+
+      // Presets (JSON-driven arm configs)
+      const PRESETS = {
+        "simple_block_arm": {
+          "name": "simple_block_arm",
+          "units": "m",
+          "joints": [
+            {"name":"base","parent":null,"pivot":[0,0,0],"axis":"y","limits":[-180,180],"home":0,"visual":{"type":"box","size":[0.36,0.18,0.36],"color":"#6b6b6b"}},
+            {"name":"shoulder","parent":"base","pivot":[0,0.18,0],"axis":"z","limits":[-90,90],"home":30,"visual":{"type":"box","size":[0.7,0.12,0.12],"color":"#ff8c42","offset":[0.35,0,0]}},
+            {"name":"elbow","parent":"shoulder","pivot":[0.7,0,0],"axis":"z","limits":[-135,135],"home":-30,"visual":{"type":"box","size":[0.55,0.1,0.1],"color":"#ffc469","offset":[0.275,0,0]}},
+            {"name":"wrist","parent":"elbow","pivot":[0.55,0,0],"axis":"z","limits":[-90,90],"home":0,"visual":{"type":"box","size":[0.18,0.08,0.08],"color":"#8fb8ff","offset":[0.09,0,0]}},
+            {"name":"hand","parent":"wrist","pivot":[0.18,0,0],"axis":"x","limits":[-180,180],"home":0,"visual":{"type":"box","size":[0.14,0.06,0.12],"color":"#ffffff","texture_text":"READY","offset":[0.07,0,0]}}
+          ]
+        }
+      };
+
+      let pivots = {};
+      let armRoot = null;
+
+      function makeStampTexture(text){
+        const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,c.width,c.height);
+        ctx.fillStyle = '#cc0000'; ctx.font = 'bold 64px sans-serif'; ctx.textAlign='center';
+        ctx.fillText(text, c.width/2, 80);
+        return new THREE.CanvasTexture(c);
+      }
+
+      function createVisual(visual){
+        if(!visual) return null;
+        const color = visual.color || '#cccccc';
+        const matOpts = {};
+        if(visual.texture_text) matOpts.map = makeStampTexture(visual.texture_text);
+        else matOpts.color = new THREE.Color(color);
+        const mat = new THREE.MeshStandardMaterial(matOpts);
+        if(visual.type === 'box'){
+          const s = visual.size || [0.1,0.1,0.1];
+          return new THREE.Mesh(new THREE.BoxGeometry(s[0], s[1], s[2]), mat);
+        }
+        if(visual.type === 'cylinder'){
+          const r = visual.radius || 0.1; const h = visual.height || 0.05;
+          return new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 16), mat);
+        }
+        return null;
+      }
+
+      function buildFromConfig(cfg){
+        // remove previous
+        if(armRoot){ scene.remove(armRoot); }
+        pivots = {};
+        armRoot = new THREE.Group(); armRoot.name = cfg.name || 'armRoot';
+        scene.add(armRoot);
+
+        // assume joints listed in parent->child order
+        for(const j of cfg.joints){
+          const pivot = new THREE.Group(); pivot.name = j.name;
+          if(j.pivot) pivot.position.set(j.pivot[0], j.pivot[1], j.pivot[2]);
+          const mesh = createVisual(j.visual);
+          if(mesh){
+            if(j.visual && j.visual.offset) mesh.position.set(j.visual.offset[0], j.visual.offset[1], j.visual.offset[2]);
+            pivot.add(mesh);
+          }
+          if(j.parent){
+            const parent = pivots[j.parent] || armRoot;
+            parent.add(pivot);
+          } else {
+            armRoot.add(pivot);
+          }
+          pivots[j.name] = pivot;
+        }
+
+        // set homes and configure sliders limits
+        for(const j of cfg.joints){
+          // apply home + optional offsetAngle
+          setJointAngle(j.name, (j.home || 0) + (j.offsetAngle || 0));
+          const inp = inputs[j.name];
+          if(inp && j.limits){ inp.min = j.limits[0]; inp.max = j.limits[1]; inp.value = j.home || 0; }
+        }
+      }
+
+      function setJointAngle(name, deg){
+        const p = pivots[name];
+        if(!p) return;
+        // find joint config to know axis
+        let cfgJoint = null;
+        for(const k of Object.values(PRESETS)){
+          cfgJoint = k.joints.find(x=>x.name===name);
+          if(cfgJoint) break;
+        }
+        const axis = (cfgJoint && cfgJoint.axis) || 'z';
+        // if cfgJoint has offsetAngle we already added it when setting home; when called from UI we set deg directly
+        p.rotation[axis] = THREE.MathUtils.degToRad(deg);
+      }
+
+      // UI hookup
+      Object.keys(inputs).forEach(n => {
+        const el = inputs[n];
+        el.addEventListener('input', ()=>{
+          setJointAngle(n, parseFloat(el.value));
+        });
+      });
+
+      document.getElementById('btn_reset').addEventListener('click', ()=>{
+        const preset = PRESETS[document.getElementById('preset_select').value];
+        if(preset){ buildFromConfig(preset); }
+      });
+
+      
+
+      // --- Joint Settings panel logic ---
+      function populateJointSelect(){
+        const sel = document.getElementById('joint_select');
+        sel.innerHTML = '';
+        const preset = PRESETS[document.getElementById('preset_select').value];
+        if(!preset) return;
+        for(const j of preset.joints){
+          const opt = document.createElement('option'); opt.value = j.name; opt.textContent = j.name; sel.appendChild(opt);
+        }
+        sel.addEventListener('change', loadJointToForm);
+        loadJointToForm();
+      }
+
+      function loadJointToForm(){
+        const name = document.getElementById('joint_select').value;
+        const preset = PRESETS[document.getElementById('preset_select').value];
+        if(!preset) return;
+        const j = preset.joints.find(x=>x.name===name);
+        if(!j) return;
+        // length: infer from visual.size[0] for boxes, or visual.radius*2 for cylinder
+        const len = (j.visual && j.visual.size && j.visual.size[0]) ? j.visual.size[0] : (j.visual && j.visual.radius ? j.visual.radius*2 : 0.1);
+        document.getElementById('joint_length').value = len;
+        document.getElementById('joint_offset').value = j.offsetAngle || 0;
+        document.getElementById('joint_blocktype').value = (j.visual && j.visual.type) || 'box';
+      }
+
+      document.getElementById('btn_load_preset').addEventListener('click', async ()=>{
+        // populate joint selector for whichever preset is selected
+        populateJointSelect();
+        // if user selected a server-stored preset (value prefixed with srv:), fetch it
+        const val = document.getElementById('preset_select').value || '';
+        if(val.startsWith('srv:')){
+          const name = val.slice(4);
+          try{
+            const resp = await fetch(`/api/arms/${encodeURIComponent(name)}`);
+            if(resp.ok){
+              const cfg = await resp.json();
+              // place into PRESETS under the server-prefixed key so we can reuse buildFromConfig
+              PRESETS[`srv:${name}`] = cfg;
+              // select the server-prefixed option so populateJointSelect finds it
+              document.getElementById('preset_select').value = `srv:${name}`;
+              buildFromConfig(cfg);
+              populateJointSelect();
+            } else {
+              console.warn('Failed to load server preset', resp.status);
+            }
+          }catch(e){ console.warn('Error fetching server preset', e); }
+        } else {
+          const name = val;
+          const preset = PRESETS[name];
+          if(preset) buildFromConfig(preset);
+        }
+      });
+
+      // Save preset button: prompts for name and POSTs to /api/arms
+      document.getElementById('btn_save_preset').addEventListener('click', async ()=>{
+        const sel = document.getElementById('preset_select');
+        const cur = sel.value;
+        // if current selection is server-backed, keep that name suggestion
+        let suggested = cur && cur.startsWith('srv:') ? cur.slice(4) : (cur || 'preset');
+        let name = prompt('Enter preset name to save:', suggested);
+        if(!name) return;
+        // sanitize name (basic)
+        name = name.replace(/[^a-zA-Z0-9_\-]/g, '_');
+        // find config: prefer PRESETS entry if present, otherwise build from displayed state
+        let cfg = PRESETS[cur];
+        if(!cfg && cur && cur.startsWith('srv:')){
+          // try to fetch server preset if not already loaded into PRESETS
+          try{
+            const name = cur.slice(4);
+            const resp = await fetch(`/api/arms/${encodeURIComponent(name)}`);
+            if(resp.ok) cfg = await resp.json();
+          }catch(e){}
+        }
+        if(!cfg){
+          cfg = PRESETS[sel.value] || PRESETS['simple_block_arm'];
+        }
+        try{
+          const resp = await fetch('/api/arms', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, config: cfg })
+          });
+          const j = await resp.json();
+          if(resp.ok && j.success){
+            alert('Saved preset: ' + name);
+            // refresh server list
+            await fetchArmsList();
+            // select the saved preset (server prefixed)
+            document.getElementById('preset_select').value = 'srv:' + name;
+          } else {
+            alert('Failed to save preset: ' + (j.error || resp.status));
+          }
+        }catch(e){ alert('Error saving preset: ' + e); }
+      });
+
+      document.getElementById('btn_apply_joint').addEventListener('click', ()=>{
+        const preset = PRESETS[document.getElementById('preset_select').value];
+        if(!preset) return;
+        const name = document.getElementById('joint_select').value;
+        const j = preset.joints.find(x=>x.name===name);
+        if(!j) return;
+        const len = parseFloat(document.getElementById('joint_length').value) || 0.1;
+        const offset = parseFloat(document.getElementById('joint_offset').value) || 0;
+        const btype = document.getElementById('joint_blocktype').value || 'box';
+        // update visual size
+        if(!j.visual) j.visual = {};
+        if(btype === 'box'){
+          j.visual.type = 'box';
+          j.visual.size = [len, j.visual.size ? j.visual.size[1] || 0.1 : 0.1, j.visual.size ? j.visual.size[2] || 0.1 : 0.1];
+        } else {
+          j.visual.type = 'cylinder';
+          j.visual.radius = len/2;
+          j.visual.height = j.visual.height || 0.06;
+        }
+        j.offsetAngle = offset;
+        // rebuild scene
+        buildFromConfig(preset);
+        // re-populate joint form (keep selection)
+        populateJointSelect();
+      });
+
+      document.getElementById('btn_export').addEventListener('click', ()=>{
+        const exporter = new GLTFExporter();
+        exporter.parse(armRoot, function(result){
+          if(result instanceof ArrayBuffer){
+            saveArrayBuffer(result, 'block_arm.glb');
+          } else {
+            const str = JSON.stringify(result, null, 2);
+            const blob = new Blob([str], { type: 'application/json' });
+            saveBlob(blob, 'block_arm.gltf');
+          }
+        }, { binary: true, trs: false, onlyVisible: true });
+      });
+
+      function saveBlob(blob, filename){
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob); link.download = filename; link.click();
+        setTimeout(()=> URL.revokeObjectURL(link.href), 10000);
+      }
+      function saveArrayBuffer(buffer, filename){ saveBlob(new Blob([buffer], { type: 'application/octet-stream' }), filename); }
+
+      // Fetch list of saved arms from server and populate select list
+      async function fetchArmsList(){
+        try{
+          const resp = await fetch('/api/arms');
+          if(!resp.ok) return;
+          const j = await resp.json();
+          const arr = Array.isArray(j.arms) ? j.arms : [];
+          const sel = document.getElementById('preset_select');
+          // preserve current selection
+          const cur = sel.value;
+          // Remove any server-added options first (we prefix them with srv:)
+          // Keep the original built-in PRESETS entries
+          // Build a map of existing preset keys so we don't duplicate
+          const baseKeys = new Set(Object.keys(PRESETS));
+          // Clear all server entries
+          for(let i = sel.options.length - 1; i >= 0; --i){
+            const opt = sel.options[i];
+            if(opt.value && opt.value.startsWith('srv:')) sel.remove(i);
+          }
+          // append server entries
+          for(const name of arr){
+            const o = document.createElement('option'); o.value = 'srv:' + name; o.textContent = name + ' (server)'; sel.appendChild(o);
+          }
+          // restore selection if possible
+          if(cur){
+            // if previously a server item but now we use different key, try to map
+            if(cur.startsWith('srv:')){
+              const want = cur;
+              let found = false;
+              for(const opt of sel.options){ if(opt.value === want) { sel.value = want; found = true; break; } }
+              if(!found && sel.options.length>0) sel.selectedIndex = 0;
+            } else {
+              sel.value = cur;
+            }
+          }
+        }catch(e){ console.warn('Failed to fetch arms', e); }
+      }
+
+      // initial fetch of server-saved presets
+      fetchArmsList();
+
+      // initial build
+      buildFromConfig(PRESETS['simple_block_arm']);
+
+      // resize + render loop
+      function resize(){
+        const w = Math.max(300, window.innerWidth - 300);
+        const h = window.innerHeight;
+        renderer.setSize(w, h);
+        camera.aspect = w / h; camera.updateProjectionMatrix();
+      }
+      window.addEventListener('resize', resize); resize();
+
+      function animate(){ requestAnimationFrame(animate); renderer.render(scene, camera); }
+      animate();
+    </script>
+  </body>
+</html>

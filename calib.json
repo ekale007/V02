@@ -1,2 +1,52 @@
-﻿{"home":{"base":90,"elbow":90,"hand":0,"shoulder":90,"wrist":90},"limits":{"base":[0,180],"elbow":[0,180],"hand":[0,180],"shoulder":[0,180],"wrist":[0,180]},"pulse":{"base":{"max_pulse":2850,"min_pulse":600},"elbow":{"max_pulse":2900,"min_pulse":600},"hand":{"max_pulse":2500,"min_pulse":500},"shoulder":{"max_pulse":3000,"min_pulse":1500},"wrist":{"max_pulse":2850,"min_pulse":600}},"step":{"base":5,"elbow":5,"hand":5,"shoulder":5,"wrist":5}}
+﻿{
+	"home": {"base": 90, "elbow": 90, "hand": 0, "shoulder": 90, "wrist": 90},
+	"limits": {
+		"base": [0, 180],
+		"elbow": [0, 180],
+		"hand": [0, 180],
+		"shoulder": [0, 180],
+		"wrist": [0, 180]
+	},
+	"pulse": {
+		"base": {"min_pulse": 600, "max_pulse": 2850},
+		"elbow": {"min_pulse": 600, "max_pulse": 2900},
+		"hand": {"min_pulse": 500, "max_pulse": 2500},
+		"shoulder": {"min_pulse": 1500, "max_pulse": 3000},
+		"wrist": {"min_pulse": 600, "max_pulse": 2850}
+	},
+	"step": {"base": 5, "elbow": 5, "hand": 5, "shoulder": 5, "wrist": 5},
+	"motion": {
+		"base": {
+			"min_dps": 8.0,
+			"max_dps": 120.0,
+			"step_interval": 0.02,
+			"speed_modes": {"slow": 8.0, "medium": 40.0, "fast": 120.0}
+		},
+		"shoulder": {
+			"min_dps": 6.0,
+			"max_dps": 90.0,
+			"step_interval": 0.02,
+			"speed_modes": {"slow": 6.0, "medium": 30.0, "fast": 90.0}
+		},
+		"elbow": {
+			"min_dps": 6.0,
+			"max_dps": 90.0,
+			"step_interval": 0.02,
+			"speed_modes": {"slow": 6.0, "medium": 30.0, "fast": 90.0}
+		},
+		"wrist": {
+			"min_dps": 10.0,
+			"max_dps": 120.0,
+			"step_interval": 0.02,
+			"speed_modes": {"slow": 10.0, "medium": 40.0, "fast": 120.0}
+		},
+		"hand": {
+			"min_dps": 20.0,
+			"max_dps": 180.0,
+			"step_interval": 0.02,
+			"speed_modes": {"slow": 20.0, "medium": 60.0, "fast": 180.0}
+		}
+	},
+	"reverse": {"base": false, "elbow": false, "hand": false, "shoulder": false, "wrist": false}
+}
 

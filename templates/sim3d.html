@@ -1,534 +1,1108 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Robot Arm — 3D Sim</title>
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "/static/js/three.module.js"
-        }
-      }
-    </script>
-    <style>
-      html,body{height:100%;margin:0;background:#061025;color:#dbeafe;font-family:system-ui,Segoe UI,Roboto,Arial;}
-      body{display:flex;flex-direction:column}
-      /* Top header */
-      #topBar{display:flex;gap:8px;padding:8px;background:rgba(0,0,0,0.25);align-items:center;justify-content:space-between;flex:0 0 56px}
-      .top-left{display:flex;gap:8px;align-items:center}
-      .header-status{background:rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px;color:#fef3c7;font-weight:600}
-      .header-btn{background:transparent;border:0;padding:6px;border-radius:6px;color:#dbeafe;cursor:pointer}
-      button{background:#0ea5e9;border:0;padding:8px 10px;color:#042027;border-radius:6px;cursor:pointer}
-      .emergency{background:#ef4444;color:white;border-radius:6px;padding:8px 12px;font-weight:700}
-      #info{margin-left:8px;color:#fee2b3}
-
-      /* Main split area below header */
-      #main{flex:1 1 auto;display:flex;min-height:0}
-      #leftPane{flex:1 1 65%;min-width:320px;display:flex;align-items:stretch}
-      #rightPane{flex:0 0 35%;min-width:260px;padding:12px;box-sizing:border-box;overflow:auto}
-
-      /* Canvas should fill left pane */
-      #canvasWrap{width:100%;height:100%;display:block;position:relative}
-      #canvasWrap canvas, #canvasWrap canvas + *{display:block}
-    </style>
-  </head>
-  <body>
-      <div id="topBar">
-        <div class="top-left">
-          <div class="header-status" id="headerStatus">Status: —</div>
-          <!-- Symbol-only home button -->
-          <button id="homeIconBtn" class="header-btn" title="Go Home">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 11.5L12 4l9 7.5" stroke="#dbeafe" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11.5v7a1 1 0 0 0 1 1h3v-5h6v5h3a1 1 0 0 0 1-1v-7" stroke="#dbeafe" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <button id="homeBtn">Home</button>
-          <button id="resetBtn">Reset View</button>
-          <button id="rotToggle">Rotation: On</button>
-          <button id="syncBtn" title="Sync preview with calibration">Sync Preview</button>
-          <label style="margin-left:8px;color:#fee2b3">Flip:</label>
-          <select id="flipSelect" style="background:transparent;color:#dbeafe;border:1px solid rgba(255,255,255,0.04);padding:6px;border-radius:6px;margin-left:6px">
-          <option value="base">base</option>
-          <option value="shoulder">shoulder</option>
-          <option value="elbow">elbow</option>
-          <option value="wrist">wrist</option>
-          <option value="hand">hand</option>
-        </select>
-        <button id="flipBtn" title="Flip selected joint direction" style="margin-left:6px">Flip Dir</button>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div id="info">Loading 3D…</div>
-          <button id="emergencyBtn" class="emergency">EMERGENCY</button>
-        </div>
-        </div>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Robot Arm — Controls (2D)</title>
+  <style>
+    body{font-family:Inter,Segoe UI,Arial,sans-serif;background:#0b1220;color:#e6f6ff;margin:0;padding:12px}
+    #topBar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    .header-status{font-weight:600}
+    #controls{width:420px;display:inline-block;vertical-align:top}
+    #main{display:flex;align-items:flex-start;justify-content:center;gap:16px}
+    #sideSchematic{display:flex;align-items:center;justify-content:center;margin-left:16px}
+    .control-card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:8px;border-radius:6px;margin-bottom:8px}
+    .slider-row{display:flex;gap:8px;align-items:center}
+    input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;height:28px;width:100%}
+    input[type=range]::-webkit-slider-runnable-track{height:10px;background:#2b6cb0;border-radius:6px}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:16px;width:16px;border-radius:50%;background:#ffd166}
+    .angle-val{min-width:48px;text-align:center;font-weight:700}
+    button{background:#152238;color:#dff6ff;border:1px solid rgba(255,255,255,0.04);padding:6px 10px;border-radius:6px;cursor:pointer}
+    svg{background:#06111a;border-radius:6px;display:block;margin:auto}
+  </style>
+</head>
+<body>
+  <div id="topBar">
+    <div style="display:flex;align-items:center;gap:8px">
+      <button id="setupBtn" title="Setup" style="font-size:18px;padding:6px;border-radius:6px">⚙️</button>
+      <div>
+        <div id="siteTitle">Robot Arm</div>
+        <div class="header-status" id="headerStatus" title="Status">—</div>
       </div>
+    </div>
+    <div id="topCenter" style="display:flex;align-items:center;justify-content:center;gap:8px">
+      <label style="font-size:13px;color:#9fb2c8;margin:0">Speed</label>
+      <select id="globalSpeedSel" style="padding:6px;border-radius:6px;background:#06111a;color:#e6f6ff;border:1px solid rgba(255,255,255,0.04)">
+        <option value="slow">Slow</option>
+        <option value="medium" selected>Medium</option>
+        <option value="fast">Fast</option>
+      </select>
+    </div>
+      <div style="display:flex;gap:8px;align-items:center">
+      <button id="libraryBtn">Library</button>
+      <button id="storePosBtn" title="Save" style="font-size:16px;padding:6px;border-radius:6px">💾</button>
+      <button id="modeToggleBtn">Mode: Simulation</button>
+      <button id="homeBtn" title="Home" style="font-size:16px;padding:6px;border-radius:6px">🏠</button>
+      <button id="emergencyBtn" title="Emergency" style="background:#b43535;color:white;padding:6px 10px;border-radius:6px">⛔</button>
+    </div>
+  </div>
 
-      <div id="main">
-        <div id="leftPane">
-          <div id="canvasWrap"></div>
-        </div>
-        <div id="rightPane">
-          <!-- Side panel: reserved for calibration, controls and logs -->
-          <h3 style="margin-top:0">Controls</h3>
-          <div id="sideContent">Calibration and controls will appear here.</div>
-        </div>
-      </div>
+  <div id="main">
+    <div id="controls">
+      <div id="controlsList"></div>
+    </div>
+    <div id="sideSchematic">
+      <svg width="360" height="360" viewBox="0 0 360 360" xmlns="http://www.w3.org/2000/svg">
+        <g id="schemRoot"></g>
+      </svg>
+    </div>
+  </div>
 
-      <div id="tooltip" style="position:fixed;pointer-events:none;left:10px;top:70px;background:rgba(2,6,23,0.9);color:#e6fffa;padding:8px 10px;border-radius:6px;border:1px solid rgba(70,140,255,0.12);min-width:200px;display:none;font-size:13px;z-index:999"> 
-        <div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1"><div id="tt-name" style="font-weight:700;margin-bottom:4px">Joint</div>
-        <div id="tt-angle">Angle: —</div>
-        <div id="tt-hint" style="margin-top:6px;color:#9ca3af;font-size:12px">Drag to rotate • Click to select</div></div>
-        <div id="tt-schematic" style="width:80px;height:50px"></div></div>
-      </div>
+  <!-- 3D viewer removed to restore 2D-only UI -->
 
-    <script type="module">
+  <script>
     (function(){
-    const IS_PREVIEW = new URLSearchParams(window.location.search).has('preview');
-    // helper to inject a script tag and wait for load
-    function loadScript(url){ return new Promise((resolve, reject)=>{ const s = document.createElement('script'); s.src = url; s.onload = ()=>resolve(); s.onerror = (e)=>reject(e); document.head.appendChild(s); }); }
+      // client-side servo map placeholder (2D UI — no server-injected map)
+      const SERVO_MAP = {};
+    // Minimal, safe 2D-only UI — no external modules.
+    const JOINT_ORDER = ['base','shoulder','elbow','wrist','hand'];
+    const DEFAULT_POS = { base:90, shoulder:90, elbow:90, wrist:90, hand:0 };
+    try{ window.latestPositions = Object.assign({}, DEFAULT_POS, JSON.parse(localStorage.getItem('simPositions')||'{}')); }catch(_){ window.latestPositions = Object.assign({}, DEFAULT_POS); }
+    try{ window.IS_LIVE = false; }catch(_){ window.IS_LIVE = false; }
 
-    // initializer using a THREE namespace and OrbitControls constructor
-    function initWithTHREE(THREElib, OrbitControlsCtor){
+    // Server now handles reverse mapping; client sends UI angles and expects server to return UI-mapped positions.
+    function _applyReverseMapping(joint, angle){ return Math.round(angle); }
+    function _mapFromServer(joint, serverAngle){ return Math.round(serverAngle); }
+
+    function sendTarget(joint, angle, speed, speed_mode){
+      // lightweight live update: set a persistent server-side target to avoid queue churn
+      try{ if(!window.IS_LIVE) return; }catch(_){ return; }
       try{
-        try{ const infoEl = document.getElementById('info'); if(infoEl) infoEl.textContent = 'Initializing 3D…'; }catch(_){ }
-        console.log('sim3d: initWithTHREE start');
-        const THREE = THREElib;
-        const OrbitControls = OrbitControlsCtor;
-        const wrap = document.getElementById('canvasWrap');
-        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x071127);
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
-        camera.position.set(200,200,260);
-        const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(wrap.clientWidth || window.innerWidth, wrap.clientHeight || window.innerHeight); renderer.domElement.style.display='block'; renderer.domElement.style.width='100%'; renderer.domElement.style.height='100%'; wrap.appendChild(renderer.domElement);
-        const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
-        // Preview mode: restrict panning and keep rotate+zoom around center
-        if(IS_PREVIEW){ controls.enablePan = false; controls.enableRotate = true; controls.enableZoom = true; controls.minDistance = 60; controls.maxDistance = 800; }
-        scene.add(new THREE.AmbientLight(0xffffff,0.5)); const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(100,200,100); scene.add(dir);
-        const grid = new THREE.GridHelper(400,40,0x1f2937,0x0b1226); grid.position.y = -1; scene.add(grid);
-        const joints = {}; const materials = { body: new THREE.MeshStandardMaterial({color:0x60a5fa, metalness:0.3, roughness:0.6}), joint: new THREE.MeshStandardMaterial({color:0xffffff}), grip: new THREE.MeshStandardMaterial({color:0xf59e0b}) };
-        function box(w,h,d){ return new THREE.BoxGeometry(w,h,d); }
-        // slimmer link shapes for easier joint clicking
-        joints.base = new THREE.Object3D(); scene.add(joints.base);
-        // base and control-box dimensions (declare early so shoulder can be positioned)
-        const plateRadius = 30;
-        // control box and base dimensions - width == base diameter, depth == 2x width, height doubled
-        const ctrlW = plateRadius * 2; // width equals base diameter
-        const ctrlD = ctrlW * 2; // length is double the width
-        const ctrlH = 36; // doubled height (was 18)
-
-        // place shoulder joint on top of the base plate (use ctrlH so it sits at plate top)
-        joints.shoulder = new THREE.Object3D(); joints.shoulder.position.y = ctrlH; joints.base.add(joints.shoulder);
-        const shoulderGeom = box(18,80,18); const shoulderMesh = new THREE.Mesh(shoulderGeom, materials.body.clone()); shoulderMesh.position.y = 40; joints.shoulder.add(shoulderMesh);
-        joints.elbow = new THREE.Object3D(); joints.elbow.position.y = 80; joints.shoulder.add(joints.elbow); const elbowGeom = box(14,60,14); const elbowMesh = new THREE.Mesh(elbowGeom, materials.body.clone()); elbowMesh.position.y = 30; joints.elbow.add(elbowMesh);
-        joints.wrist = new THREE.Object3D(); joints.wrist.position.y = 60; joints.elbow.add(joints.wrist); const wristGeom = box(12,40,12); const wristMesh = new THREE.Mesh(wristGeom, materials.body.clone()); wristMesh.position.y = 20; joints.wrist.add(wristMesh);
-        joints.hand = new THREE.Object3D(); joints.hand.position.y = 40; joints.wrist.add(joints.hand); const handGeom = box(10,18,18); const handMesh = new THREE.Mesh(handGeom, materials.grip.clone()); handMesh.position.y = 9; joints.hand.add(handMesh);
-        // joint markers (bigger) and invisible pick-spheres (slightly larger) to improve hit targets
-        const pickMaterial = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.001});
-        function jointMarker(parent, radius=10){ const m = new THREE.Mesh(new THREE.SphereGeometry(radius,16,16), materials.joint.clone()); m.position.set(0,0,0); parent.add(m); const pick = new THREE.Mesh(new THREE.SphereGeometry(radius*1.6,12,12), pickMaterial); pick.position.set(0,0,0); // slightly larger pick surface
-          parent.add(pick); return {marker:m, pick:pick}; }
-        const jm_base = jointMarker(joints.base, 10); const jm_sh = jointMarker(joints.shoulder, 10); const jm_el = jointMarker(joints.elbow, 9); const jm_wr = jointMarker(joints.wrist, 8); const jm_hd = jointMarker(joints.hand, 8);
-        // replace base visual with a round plate and add a top indicator
-        const plateGeom = new THREE.CylinderGeometry(plateRadius, plateRadius, ctrlH, 48);
-        const plateMat = materials.body.clone(); plateMat.roughness = 0.8; const plate = new THREE.Mesh(plateGeom, plateMat); plate.position.y = ctrlH/2; joints.base.add(plate);
-        // small arrow indicator on top of base showing current yaw
-        const indGeom = new THREE.BoxGeometry(2,1,12); const indMat = new THREE.MeshStandardMaterial({color:0xfffbeb}); const baseIndicator = new THREE.Mesh(indGeom, indMat); baseIndicator.position.y = 10; baseIndicator.position.z = 10; joints.base.add(baseIndicator);
-        // orientation arrow pointing in +X (forward) placed in front of the robot for easier orientation
-        try{
-          // create a flat, thick 3D arrow (shaft + cone head) that starts at the robot center and points +X
-          const arrowGroup = new THREE.Group();
-          const shaftLength = 80;
-          const shaftThickness = 3; // flat
-          const shaftDepth = 18; // thick
-          const shaftGeom = new THREE.BoxGeometry(shaftLength, shaftThickness, shaftDepth);
-          const shaftMat = new THREE.MeshStandardMaterial({color:0xff4444, metalness:0.2, roughness:0.6});
-          const shaft = new THREE.Mesh(shaftGeom, shaftMat);
-          // position shaft so its start is at the robot center (box is centered by default)
-          // lay arrow on the ground plane (y ~ 1)
-          shaft.position.set(shaftLength/2, 1, 0);
-          arrowGroup.add(shaft);
-          // cone head
-          const headRadius = Math.max(shaftDepth*0.9, 6);
-          const headHeight = 14;
-          const headGeom = new THREE.ConeGeometry(headRadius, headHeight, 24);
-          const headMat = new THREE.MeshStandardMaterial({color:0xff4444});
-          const head = new THREE.Mesh(headGeom, headMat);
-          // rotate cone to point along +X (cone default points +Y)
-          head.rotation.z = -Math.PI/2;
-          head.position.set(shaftLength + headHeight/2, 1, 0);
-          arrowGroup.add(head);
-          // optional flat base plate label: small box under shaft for visual weight
-          try{
-            const basePad = new THREE.Mesh(new THREE.BoxGeometry(14,2,8), new THREE.MeshStandardMaterial({color:0xff6666, opacity:0.6, transparent:true}));
-            basePad.position.set(6, 1, 0);
-            arrowGroup.add(basePad);
-          }catch(_){ }
-          scene.add(arrowGroup);
-            // add a small control box protruding from center in -X to represent the control box under the shoulder
-            try{
-              const ctrlGeom = new THREE.BoxGeometry(ctrlW, ctrlH, ctrlD);
-              const ctrlMat = materials.body.clone(); ctrlMat.roughness = 0.9; const ctrlBox = new THREE.Mesh(ctrlGeom, ctrlMat);
-              // position box so it extends in -X from the base center and sits on the ground (y = ctrlH/2)
-              ctrlBox.position.set(-(ctrlW/2 + 6), ctrlH/2, 0);
-              // add control box to scene root so it remains static (doesn't rotate with base)
-              scene.add(ctrlBox);
-            }catch(_){ }
-        }catch(_){ /* ignore if geometry APIs not available */ }
-        const LINK_MESH = { base: plate, shoulder: shoulderMesh, elbow: elbowMesh, wrist: wristMesh, hand: handMesh };
-        const MARKER_MAP = { base: jm_base.marker, shoulder: jm_sh.marker, elbow: jm_el.marker, wrist: jm_wr.marker, hand: jm_hd.marker };
-        const JOINT_ORDER = ['base','shoulder','elbow','wrist','hand'];
-        const JOINT_META = { base: {obj: joints.base, axis: new THREE.Vector3(0,1,0), min:0, max:180, zero:90, invert:false}, shoulder: {obj: joints.shoulder, axis: new THREE.Vector3(0,1,0), min:0, max:180, zero:90, invert:false}, elbow: {obj: joints.elbow, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90, invert:false}, wrist: {obj: joints.wrist, axis: new THREE.Vector3(1,0,0), min:0, max:180, zero:90, invert:false}, hand: {obj: joints.hand, axis: new THREE.Vector3(0,0,1), min:0, max:180, zero:0, invert:false} };
-        const ray = new THREE.Raycaster(); const pointer = new THREE.Vector2(); let selected = null; let prevPointer = null;
-        // drag state: record pointer on down and the starting absolute angle
-        let dragStartPointer = null; let dragStartAngle = null;
-        let hoverName = null;
-        let rotationEnabled = true;
-        // arc (ring) helpers for min/max range per joint (semi-transparent sectors)
-        const JOINT_ARCS = {};
-        // thin line markers at min/max angles (scene-root so they stay fixed in world space)
-        const JOINT_TICKS = {};
-        // optional arrow helpers (min/max indicators) per joint — created if available
-        const JOINT_ARROWS = {};
-        const ARC_RADII = { base:[32,40], shoulder:[48,60], elbow:[42,52], wrist:[34,44], hand:[12,20] };
-        function makeArrowsForJoint(name){ const meta = JOINT_META[name]; if(!meta) return; const origin = new THREE.Vector3(0,0,0); const len = (ARC_RADII[name] && ARC_RADII[name][1])? ARC_RADII[name][1] : 36; const colMin = 0x22c1ff; const colMax = 0xffdd57; try{ const dir0 = new THREE.Vector3(1,0,0);
-          // Compute arrow directions relative to joint zero/home — no implicit 90° offset
-          const a0 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.min - meta.zero)); dir0.applyQuaternion(a0).normalize(); const arr0 = new THREE.ArrowHelper(dir0, origin, len, colMin, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr0.visible = false; meta.obj.add(arr0);
-          const dir1 = new THREE.Vector3(1,0,0); const a1 = new THREE.Quaternion().setFromAxisAngle(meta.axis, THREE.MathUtils.degToRad(meta.max - meta.zero)); dir1.applyQuaternion(a1).normalize(); const arr1 = new THREE.ArrowHelper(dir1, origin, len, colMax, Math.max(6, len*0.18), Math.max(4, len*0.12)); arr1.visible = false; meta.obj.add(arr1);
-          JOINT_ARROWS[name] = [arr0, arr1]; }catch(_){ /* ignore if ArrowHelper not present */ } }
-        function makeArcForJoint(name){
-          const meta = JOINT_META[name]; if(!meta) return;
-          const radii = ARC_RADII[name] || [20,30]; const inner = radii[0]; const outer = radii[1];
-          // Compute arc start relative to joint zero/home; apply a flip for X/Y joints if needed
-          const axisFlipDeg = (meta.axis.x || meta.axis.y) ? 180 : 0;
-          const thetaStart = THREE.MathUtils.degToRad(meta.min - meta.zero + axisFlipDeg);
-          const thetaLen = THREE.MathUtils.degToRad(meta.max - meta.min);
-          const geom = new THREE.RingGeometry(inner, outer, 64, 1, thetaStart, Math.max(0.001, thetaLen));
-          const mat = new THREE.MeshBasicMaterial({color:0x44ccff, transparent:true, opacity:0.18, side:THREE.DoubleSide});
-          const mesh = new THREE.Mesh(geom, mat);
-          // Add arcs to the scene root so they don't inherit the joint's rotation.
-          // We'll update their world position & orientation each frame inside animate().
-          // Hide by default; show on hover.
-          mesh.visible = false; scene.add(mesh);
-          JOINT_ARCS[name] = mesh;
-          // create min/max tick markers (two thin lines) and add to scene-root
-          try{
-            const minA = THREE.MathUtils.degToRad(meta.min - meta.zero + axisFlipDeg);
-            const maxA = THREE.MathUtils.degToRad(meta.max - meta.zero + axisFlipDeg);
-            function makeTick(angleRad, color){
-              const x0 = inner * Math.cos(angleRad);
-              const y0 = inner * Math.sin(angleRad);
-              const x1 = outer * Math.cos(angleRad);
-              const y1 = outer * Math.sin(angleRad);
-              const pts = [ new THREE.Vector3(x0, y0, 0), new THREE.Vector3(x1, y1, 0) ];
-              const geom = new THREE.BufferGeometry().setFromPoints(pts);
-              const mat = new THREE.LineBasicMaterial({ color: color, transparent:true, opacity:0.95 });
-              const line = new THREE.Line(geom, mat);
-              line.visible = false; scene.add(line);
-              return line;
-            }
-            const t0 = makeTick(minA, 0x22c1ff);
-            const t1 = makeTick(maxA, 0xffdd57);
-            JOINT_TICKS[name] = [t0, t1];
-          }catch(_){ /* ignore tick creation errors */ }
-        }
-        for(const nm of JOINT_ORDER) makeArcForJoint(nm);
-        // also create arrow indicators (non-blocking)
-        for(const nm of JOINT_ORDER) try{ makeArrowsForJoint(nm); }catch(_){ }
-        try{ controls.enableRotate = rotationEnabled; }catch(_){}
-        const PICK_TARGETS = [ jm_base.pick, jm_sh.pick, jm_el.pick, jm_wr.pick, jm_hd.pick ];
-        // live-poll calibration every 2s and update JOINT_META + arcs when changed
-        let _lastCalib = null;
-        async function updateCalibrationData(data){ if(!data) return; const changed = {};
-          if(data.limits){ for(const k of Object.keys(data.limits)){ if(JOINT_META[k]){ const lim = data.limits[k]; if(JOINT_META[k].min !== lim[0] || JOINT_META[k].max !== lim[1]){ JOINT_META[k].min = lim[0]; JOINT_META[k].max = lim[1]; changed[k]=true; } } } }
-          if(data.home){ for(const k of Object.keys(data.home)){ if(JOINT_META[k] && JOINT_META[k].zero !== data.home[k]){ JOINT_META[k].zero = data.home[k]; changed[k]=true; } } }
-          // rebuild arcs only for changed joints
-          for(const nm of Object.keys(changed)){ const existing = JOINT_ARCS[nm]; if(existing){ try{ JOINT_META[nm].obj.remove(existing); }catch(_){ } delete JOINT_ARCS[nm]; }
-            // remove any existing ticks for the joint
-            const tset = JOINT_TICKS[nm]; if(tset){ try{ for(const tt of tset) if(tt && tt.parent) tt.parent.remove(tt); }catch(_){ } delete JOINT_TICKS[nm]; }
-            makeArcForJoint(nm); }
-        }
-        async function pollCalibration(){ try{ const resp = await fetch('/api/calibration', {cache:'no-store'}); if(resp && resp.ok){ const data = await resp.json(); const snap = JSON.stringify({limits:data.limits||{}, home:data.home||{}}); if(snap !== _lastCalib){ _lastCalib = snap; await updateCalibrationData(data); } } }catch(_){ /* ignore transient errors */ } }
-        // initial poll + interval
-        pollCalibration(); const _calibPoll = setInterval(pollCalibration, 2000);
-        // Poll /api/status so preview follows slider/servo movements
-        async function pollStatusOnce(){
-          try{
-            const resp = await fetch('/api/status',{cache:'no-store'});
-            if(resp && resp.ok){
-              const data = await resp.json();
-              applyStatusPositions(data);
-              // update header status badge when polling status
-              try{
-                const hs = document.getElementById('headerStatus');
-                if(hs) hs.textContent = data.hardware_available? 'Status: Hardware OK' : 'Status: Simulation';
-              }catch(_){ }
-            }
-          }catch(_){ }
-        }
-        // helper: convert logical servo value -> world rotation (radians) taking invert into account
-        function valueToWorldRad(m, value){ const sign = m.invert? -1: 1; return THREE.MathUtils.degToRad(sign * (value - (m.zero || 0))); }
-        // helper: convert world rotation (object rotation in radians) -> logical servo value
-        function worldRadToValue(m){ const rotDeg = THREE.MathUtils.radToDeg(m.axis.x?m.obj.rotation.x:(m.axis.y?m.obj.rotation.y:m.obj.rotation.z)); return (m.zero || 0) + (m.invert ? -rotDeg : rotDeg); }
-
-        function applyStatusPositions(data){ if(!data || !data.positions) return; for(const j of JOINT_ORDER){ const m = JOINT_META[j]; if(!m) continue; const val = data.positions[j]; if(typeof val === 'number'){ const worldRad = valueToWorldRad(m, val); if(m.axis.x) m.obj.rotation.x = worldRad; else if(m.axis.y) m.obj.rotation.y = worldRad; else if(m.axis.z) m.obj.rotation.z = worldRad; } } }
-        // poll fast for responsive preview
-        const _statusPoll = setInterval(pollStatusOnce, 240);
-        // preview camera smoothing parameters (exposed as live-updatable vars)
-        let previewTargetLerp = 0.12; // 0 = instant, 1 = snap
-        let previewTargetHeight = 12; // world-units to offset upward from shoulder
-        function screenToPointer(ev){ const rect = renderer.domElement.getBoundingClientRect(); return { x: ((ev.clientX - rect.left)/rect.width)*2-1, y: -((ev.clientY - rect.top)/rect.height)*2+1 }; }
-        function sendMove(jointName, angle){ fetch('/api/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({joint:jointName, angle: Math.round(angle)})}).catch(()=>{}); }
-        renderer.domElement.addEventListener('pointerdown', (ev)=>{ if(IS_PREVIEW) return; ev.preventDefault(); const p = screenToPointer(ev); pointer.x = p.x; pointer.y = p.y; ray.setFromCamera(pointer, camera); const intersects = ray.intersectObjects(PICK_TARGETS, true); if(intersects.length>0){ let obj = intersects[0].object; // find which joint this pick belongs to
-            let found = null;
-            if(obj === jm_base.pick) found = 'base'; else if(obj === jm_sh.pick) found = 'shoulder'; else if(obj === jm_el.pick) found = 'elbow'; else if(obj === jm_wr.pick) found = 'wrist'; else if(obj === jm_hd.pick) found = 'hand';
-            if(found){ selected = found; // record starting pointer and absolute angle for stable dragging
-              dragStartPointer = {x:ev.clientX, y:ev.clientY}; prevPointer = {x:ev.clientX, y:ev.clientY}; const meta = JOINT_META[found]; if(meta){ try{ dragStartAngle = worldRadToValue(meta); }catch(_){ const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); dragStartAngle = THREE.MathUtils.radToDeg(rot) + meta.zero; } }
-              // disable orbit rotation while dragging a joint
-              try{ controls.enableRotate = false; }catch(_){}; document.body.style.cursor = 'grabbing'; }
-        } });
-
-        // Hover highlight when not dragging (also update tooltip & arrows)
-        renderer.domElement.addEventListener('pointermove', (ev)=>{
-          if(IS_PREVIEW) return; if(selected) return; // don't hover while dragging
-          const p = screenToPointer(ev);
-          pointer.x = p.x; pointer.y = p.y; ray.setFromCamera(pointer, camera);
-          const ints = ray.intersectObjects(PICK_TARGETS, true);
-          if(ints.length>0){
-            let obj = ints[0].object; let found = null;
-            if(obj === jm_base.pick) found = 'base'; else if(obj === jm_sh.pick) found = 'shoulder'; else if(obj === jm_el.pick) found = 'elbow'; else if(obj === jm_wr.pick) found = 'wrist'; else if(obj === jm_hd.pick) found = 'hand';
-            if(found && found !== hoverName){ if(hoverName){ try{ LINK_MESH[hoverName].material.emissive.setHex(0x000000); MARKER_MAP[hoverName].material.emissive.setHex(0x000000); // hide arcs
-                  const prevA = JOINT_ARCS[hoverName]; if(prevA) prevA.visible=false;
-                  const prevT = JOINT_TICKS[hoverName]; if(prevT) prevT.forEach(t=>t.visible=false);
-                }catch(_){} }
-              hoverName = found; try{ LINK_MESH[hoverName].material.emissive.setHex(0x2244ff); MARKER_MAP[hoverName].material.emissive.setHex(0x44ffaa); // show arc
-                  const arc = JOINT_ARCS[hoverName]; if(arc) arc.visible=true;
-                  const ticks = JOINT_TICKS[hoverName]; if(ticks) ticks.forEach(t=>t.visible=true);
-                }catch(_){}
-              // update tooltip content & position (including small schematic SVG)
-              const t = document.getElementById('tooltip'); const tn = document.getElementById('tt-name'); const ta = document.getElementById('tt-angle'); const tv = document.getElementById('tt-schematic'); if(t && tn && ta){ tn.textContent = hoverName; const meta = JOINT_META[hoverName]; const current = Math.round(worldRadToValue(meta)); ta.textContent = 'Angle: ' + current + '°'; t.style.display = 'block'; const rect = renderer.domElement.getBoundingClientRect(); t.style.left = (ev.clientX+12) + 'px'; t.style.top = (ev.clientY+12) + 'px'; 
-                  // update schematic svg
-                  if(tv){ const w=80,h=50, cx=w/2, cy=h/2, r=24; const a0 = (meta.min - meta.zero) * Math.PI/180; const a1 = (meta.max - meta.zero) * Math.PI/180; const x0 = cx + r*Math.cos(a0 - Math.PI/2); const y0 = cy + r*Math.sin(a0 - Math.PI/2); const x1 = cx + r*Math.cos(a1 - Math.PI/2); const y1 = cy + r*Math.sin(a1 - Math.PI/2); const large = (Math.abs(a1-a0) > Math.PI)?1:0; const path = `<path d="M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z" fill="#22c1ff33" stroke="#22c1ff66" stroke-width="1"/>`;
-                    tv.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${path}<circle cx="${cx}" cy="${cy}" r="2" fill="#fff"/></svg>`; }
-                }
-              document.body.style.cursor = 'pointer'; }
-          } else { if(hoverName){ try{ LINK_MESH[hoverName].material.emissive.setHex(0x000000); MARKER_MAP[hoverName].material.emissive.setHex(0x000000); const arc = JOINT_ARCS[hoverName]; if(arc) arc.visible=false; const ticks = JOINT_TICKS[hoverName]; if(ticks) ticks.forEach(t=>t.visible=false); }catch(_){} } hoverName = null; document.body.style.cursor = 'default'; }
-        });
-        window.addEventListener('pointermove', (ev)=>{ if(IS_PREVIEW) return; if(!selected) return; ev.preventDefault(); if(!dragStartPointer || dragStartAngle===null) return; const dx = ev.clientX - dragStartPointer.x; const degPerPx = 0.25; // pixels → degrees mapping
-          const meta = JOINT_META[selected]; if(!meta) return; const desired = dragStartAngle + dx * degPerPx; const clamped = Math.max(meta.min, Math.min(meta.max, desired)); // set rotation to clamped angle (respect invert)
-          const worldRad = valueToWorldRad(meta, clamped);
-          if(meta.axis.x) meta.obj.rotation.x = worldRad; else if(meta.axis.y) meta.obj.rotation.y = worldRad; else if(meta.axis.z) meta.obj.rotation.z = worldRad; sendMove(selected, clamped); });
-        window.addEventListener('pointerup', ()=>{ if(IS_PREVIEW) return; selected = null; prevPointer = null; dragStartPointer = null; dragStartAngle = null; try{ controls.enableRotate = rotationEnabled; }catch(_){}; document.body.style.cursor = 'default'; const t = document.getElementById('tooltip'); if(t) t.style.display = 'none'; // hide tooltip on release
-          // hide any arcs and ticks if not hovering
-          for(const k of Object.keys(JOINT_ARCS)) if(k !== hoverName){ const ar = JOINT_ARCS[k]; if(ar) ar.visible=false; const tks = JOINT_TICKS[k]; if(tks) tks.forEach(t=>t.visible=false); }
-        });
-        let lastDist = null; renderer.domElement.addEventListener('touchstart', (ev)=>{ if(IS_PREVIEW) return; if(ev.touches.length===2){ const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); lastDist = d; } }); renderer.domElement.addEventListener('touchmove', (ev)=>{ if(IS_PREVIEW) return; if(ev.touches.length===2 && lastDist){ ev.preventDefault(); const d = Math.hypot(ev.touches[0].clientX-ev.touches[1].clientX, ev.touches[0].clientY-ev.touches[1].clientY); const f = d/lastDist; camera.position.multiplyScalar(1/f); lastDist = d; } }, {passive:false}); renderer.domElement.addEventListener('touchend', ()=>{ lastDist = null; });
-        document.getElementById('homeBtn').addEventListener('click', ()=>{ fetch('/api/home',{method:'POST'}).catch(()=>{}); for(const name of JOINT_ORDER){ const m=JOINT_META[name]; const z = m.zero || 0; try{ const wr = valueToWorldRad(m, z); if(m.axis.x) m.obj.rotation.x = wr; else if(m.axis.y) m.obj.rotation.y = wr; else if(m.axis.z) m.obj.rotation.z = wr; }catch(_){ if(m.axis.x) m.obj.rotation.x = THREE.MathUtils.degToRad(z); else if(m.axis.y) m.obj.rotation.y = THREE.MathUtils.degToRad(z); else if(m.axis.z) m.obj.rotation.z = THREE.MathUtils.degToRad(z); } } });
-        // symbol-based Home button in header (same action as `homeBtn`)
-        const homeIcon = document.getElementById('homeIconBtn');
-        if(homeIcon){ homeIcon.addEventListener('click', ()=>{ try{ document.getElementById('homeBtn').click(); }catch(_){ fetch('/api/home',{method:'POST'}).catch(()=>{}); } }); }
-        // Emergency button in header: prominent rectangular button
-        const emBtn = document.getElementById('emergencyBtn');
-        if(emBtn){ emBtn.addEventListener('click', ()=>{
-          if(!confirm('Trigger EMERGENCY STOP?')) return;
-          fetch('/api/emergency',{method:'POST'}).then(()=>{
-            const hs = document.getElementById('headerStatus'); if(hs) hs.textContent = 'Status: EMERGENCY';
-          }).catch(()=>{ const hs = document.getElementById('headerStatus'); if(hs) hs.textContent = 'Status: EMERGENCY (failed to notify)'; });
-        }); }
-        document.getElementById('resetBtn').addEventListener('click', ()=>{ controls.reset(); });
-        document.getElementById('rotToggle').addEventListener('click', ()=>{ rotationEnabled = !rotationEnabled; try{ controls.enableRotate = rotationEnabled; }catch(_){}; document.getElementById('rotToggle').textContent = 'Rotation: ' + (rotationEnabled? 'On':'Off'); });
-        const sb = document.getElementById('syncBtn'); if(sb) sb.addEventListener('click', ()=>{ if(window.syncPreviewCalibration) window.syncPreviewCalibration(); });
-        // Flip-direction button toggles `invert` on the selected joint for preview testing
-        const flipBtn = document.getElementById('flipBtn');
-        if(flipBtn){
-          flipBtn.addEventListener('click', ()=>{
-            try{
-              const sel = document.getElementById('flipSelect');
-              const j = sel? sel.value : 'base';
-              const m = JOINT_META[j];
-              if(m){
-                m.invert = !m.invert;
-                const infoEl = document.getElementById('info');
-                if(infoEl) infoEl.textContent = `${j} invert: ${m.invert ? 'yes':'no'}`;
-                // refresh visual helpers to reflect sign (rebuild arrows/arcs)
-                try{
-                  const existing = JOINT_ARCS[j];
-                  if(existing && existing.parent) existing.parent.remove(existing);
-                  delete JOINT_ARCS[j];
-                  const tset = JOINT_TICKS[j];
-                  if(tset){
-                    try{ for(const tt of tset) if(tt && tt.parent) tt.parent.remove(tt); }catch(_){ }
-                    delete JOINT_TICKS[j];
-                  }
-                  const aSet = JOINT_ARROWS[j];
-                  if(aSet){
-                    try{ for(const a of aSet) if(a && a.parent) a.parent.remove(a); }catch(_){ }
-                    delete JOINT_ARROWS[j];
-                  }
-                  makeArcForJoint(j);
-                  try{ makeArrowsForJoint(j); }catch(_){ }
-                }catch(_){ }
-                setTimeout(()=>{ if(infoEl) infoEl.textContent = '' }, 1200);
-              }
-            }catch(e){ console.warn('flip failed', e); }
-          });
-        }
-        function animate(){ requestAnimationFrame(animate); // update base indicator and tooltip angle each frame
-          // in preview mode we want the camera target to follow the shoulder end
-          if(IS_PREVIEW){ try{ const shoulderWorld = new THREE.Vector3(); JOINT_META.shoulder.obj.getWorldPosition(shoulderWorld); const desiredTarget = shoulderWorld.clone().add(new THREE.Vector3(0, previewTargetHeight, 0)); controls.target.lerp(desiredTarget, previewTargetLerp); controls.update(); }catch(_){ } }
-          for(const name of JOINT_ORDER){ const meta = JOINT_META[name]; if(!meta) continue; // update arrow directions in case geometry moved
-            const arrows = JOINT_ARROWS[name]; if(arrows){ const base = new THREE.Vector3(1,0,0); if(Math.abs(meta.axis.dot(base))>0.9) base.set(0,0,1); const axisFlipAr = (meta.axis.x||meta.axis.y)?180:0; for(let i=0;i<arrows.length;i++){ const angle = (i===0?meta.min:meta.max); const ang = THREE.MathUtils.degToRad((angle - meta.zero + axisFlipAr)); const q = new THREE.Quaternion().setFromAxisAngle(meta.axis, ang); const dir = base.clone().applyQuaternion(q).normalize(); arrows[i].setDirection(dir); arrows[i].position.copy(new THREE.Vector3(0,0,0)); } }
-              // update base indicator rotation
-              if(name==='base'){ const m = JOINT_META.base; const rot = m.obj.rotation.y || m.obj.rotation.z || m.obj.rotation.x; baseIndicator.rotation.y = m.obj.rotation.y || 0; }
-            }
-            // update arc positions & orientations so they stay at joint world positions
-            for(const nm of Object.keys(JOINT_ARCS)){
-              try{
-                const arc = JOINT_ARCS[nm]; const meta = JOINT_META[nm]; if(!arc || !meta) continue;
-                const worldPos = new THREE.Vector3(); const worldQuat = new THREE.Quaternion(); meta.obj.getWorldPosition(worldPos); meta.obj.getWorldQuaternion(worldQuat);
-                const worldAxis = meta.axis.clone().applyQuaternion(worldQuat).normalize(); // ring normal is +Z locally
-                const qrot = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), worldAxis);
-                arc.position.copy(worldPos);
-                arc.quaternion.copy(qrot);
-              }catch(_){ }
-            }
-            // update tick markers positions & orientations so they stay at joint world positions
-            for(const nm of Object.keys(JOINT_TICKS)){
-              try{
-                const ticks = JOINT_TICKS[nm]; const meta = JOINT_META[nm]; if(!ticks || !meta) continue;
-                const worldPos = new THREE.Vector3(); const worldQuat = new THREE.Quaternion(); meta.obj.getWorldPosition(worldPos); meta.obj.getWorldQuaternion(worldQuat);
-                const worldAxis = meta.axis.clone().applyQuaternion(worldQuat).normalize();
-                const qrot = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), worldAxis);
-                for(const t of ticks){ if(!t) continue; t.position.copy(worldPos); t.quaternion.copy(qrot); }
-              }catch(_){ }
-            }
-          // update tooltip position if visible and hoverName
-          const t = document.getElementById('tooltip'); if(t && hoverName){ // attempt to place near joint screen position
-            const worldPos = new THREE.Vector3(); JOINT_META[hoverName].obj.getWorldPosition(worldPos); const pos = worldPos.project(camera); const rect = renderer.domElement.getBoundingClientRect(); const x = (pos.x * 0.5 + 0.5) * rect.width + rect.left; const y = (-pos.y * 0.5 + 0.5) * rect.height + rect.top; t.style.left = (x+12) + 'px'; t.style.top = (y+12) + 'px'; // update angle
-            const meta = JOINT_META[hoverName]; const rot = meta.axis.x?meta.obj.rotation.x:(meta.axis.y?meta.obj.rotation.y:meta.obj.rotation.z); const current = Math.round(THREE.MathUtils.radToDeg(rot) + meta.zero); const ta = document.getElementById('tt-angle'); if(ta) ta.textContent = 'Angle: ' + current + '°'; }
-          controls.update(); renderer.render(scene, camera); } animate();
-        window.addEventListener('resize', ()=>{ const w = wrap.clientWidth || window.innerWidth; const h = wrap.clientHeight || window.innerHeight; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w,h); });
-        const info = document.getElementById('info'); if(info) info.textContent = '';
-        // hide UI chrome for compact preview mode
-        if(IS_PREVIEW){ try{ const tb = document.getElementById('topBar'); if(tb) tb.style.display='none'; const tt = document.getElementById('tooltip'); if(tt) tt.style.display='none'; }catch(_){ } }
-        // expose a sync function to pull latest calibration/home and sim offsets into the preview
-        window.syncPreviewCalibration = async function(){
-          try{
-            // fetch calibration (home/limits)
-            const resp = await fetch('/api/calibration',{cache:'no-store'});
-            const calib = (resp && resp.ok) ? await resp.json() : null;
-            // fetch sim config (axes + offsets)
-            let sim = null;
-            try{ const s = await fetch('/api/simconfig',{cache:'no-store'}); if(s && s.ok) sim = await s.json(); }catch(_){ /* ignore */ }
-            // first apply calibration data (limits + home)
-            if(calib) await updateCalibrationData(calib);
-            // then apply offsets according to axis mapping: sim.offsets[j] = {a,b,c}
-            if(sim && sim.offsets){
-              JOINT_ORDER.forEach(function(j){
-                const homeVal = (calib && calib.home && typeof calib.home[j] !== 'undefined') ? calib.home[j] : (JOINT_META[j] && JOINT_META[j].zero ? JOINT_META[j].zero : 0);
-                let offsetToApply = 0;
-                const offs = sim.offsets[j] || {};
-                const axis = (sim.axes && sim.axes[j]) ? sim.axes[j] : null;
-                if(axis === 'x') offsetToApply = offs.a || 0;
-                else if(axis === 'y') offsetToApply = offs.b || 0;
-                else if(axis === 'z') offsetToApply = offs.c || 0;
-                if(JOINT_META[j]){
-                  JOINT_META[j].zero = homeVal + (offsetToApply || 0);
-                  // update joint rotation axis according to sim.axes mapping so C (z) rotates around Z, etc.
-                  try{
-                    if(axis === 'x') JOINT_META[j].axis = new THREE.Vector3(1,0,0);
-                    else if(axis === 'y') JOINT_META[j].axis = new THREE.Vector3(0,1,0);
-                    else if(axis === 'z') JOINT_META[j].axis = new THREE.Vector3(0,0,1);
-                  }catch(_){ }
-                  // Rebuild visual helpers for this joint so arcs/arrows align with the new axis
-                  try{
-                    const existingArc = JOINT_ARCS[j]; if(existingArc && existingArc.parent) existingArc.parent.remove(existingArc); delete JOINT_ARCS[j];
-                    const tset = JOINT_TICKS[j]; if(tset){ try{ for(const tt of tset) if(tt && tt.parent) tt.parent.remove(tt); }catch(_){ } delete JOINT_TICKS[j]; }
-                    const aSet = JOINT_ARROWS[j]; if(aSet){ try{ for(const a of aSet) if(a && a.parent) a.parent.remove(a); }catch(_){ } delete JOINT_ARROWS[j]; }
-                    makeArcForJoint(j);
-                    try{ makeArrowsForJoint(j); }catch(_){ }
-                  }catch(_){ }
-                }
-              });
-            }
-            // also apply home (zero) rotations immediately so preview matches calibration+offset
-            try{
-              for(const name of JOINT_ORDER){ const m = JOINT_META[name]; if(!m) continue; const z = m.zero || 0; const rotRad = THREE.MathUtils.degToRad(z); if(m.axis.x) m.obj.rotation.x = rotRad; else if(m.axis.y) m.obj.rotation.y = rotRad; else if(m.axis.z) m.obj.rotation.z = rotRad; }
-            }catch(_){ /* ignore rotation apply errors */ }
-            info.textContent = 'Preview synced'; setTimeout(()=>{ info.textContent = '' }, 1500);
-          }catch(e){ console.warn(e); info.textContent = 'Sync failed'; setTimeout(()=>{ info.textContent = '' }, 1500); }
-        };
-        // allow parent to set preview camera parameters live
-        window.setPreviewParams = function(o){ try{ if(typeof o !== 'object') return; if(typeof o.lerp !== 'undefined'){ previewTargetLerp = Number(o.lerp) || previewTargetLerp; } if(typeof o.height !== 'undefined'){ previewTargetHeight = Number(o.height) || previewTargetHeight; } }catch(_){ } };
-        // also accept postMessage from parent (fallback)
-        window.addEventListener('message', function(ev){ try{ const d = ev.data; if(d && d.type === 'setPreviewParams'){ window.setPreviewParams({ lerp: d.lerp, height: d.height }); } }catch(_){ } });
-      }catch(err){ console.error('initWithTHREE error', err); throw err; }
+        const body = { joint: joint, angle: Math.round(angle) };
+        if(typeof speed !== 'undefined' && speed !== null) body.speed = speed;
+        if(typeof speed_mode !== 'undefined' && speed_mode !== null) body.speed_mode = speed_mode;
+        fetch('/api/set_target', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{});
+      }catch(_){ }
     }
 
-    (async ()=>{
+    function sendMove(joint, angle, speed_mode){
+      // final authoritative move — keep existing behavior
+      try{ if(!window.IS_LIVE) return; }catch(_){ return; }
+      try{ const mapped = _applyReverseMapping(joint, angle); const body = { joint: joint, angle: mapped }; if(typeof speed_mode !== 'undefined' && speed_mode !== null) body.speed_mode = speed_mode; fetch('/api/move', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(()=>{}); }catch(_){ }
+    }
+
+    function drawBarSchematic(){
       try{
-        console.log('sim3d: bootstrap start', { preview: IS_PREVIEW });
-        // Use import map to resolve bare 'three' specifiers, then import OrbitControls as ES module
-          // Prefer `import('three')` so the import map (above) can point to our local `three.module.js`.
-          // Fallback to local `/static/js/three.module.js` then CDN. This avoids loading two
-          // separate Three.js instances which caused "Multiple instances of Three.js" warnings.
-          let THREE;
-          try{ console.log('sim3d: attempting dynamic import("three")'); THREE = await import('three'); console.log('sim3d: import("three") succeeded'); }
-          catch(e1){ console.warn('sim3d: import("three") failed, trying local module', e1);
-            try{ console.log('sim3d: attempting import("/static/js/three.module.js")'); THREE = await import('/static/js/three.module.js'); console.log('sim3d: local three.module import succeeded'); }
-            catch(e2){ console.warn('sim3d: local three.module import failed, trying CDN', e2); THREE = await import('https://unpkg.com/three@0.158.0/build/three.module.js'); console.log('sim3d: CDN three.module import succeeded'); }}
-        try{
-          console.log('sim3d: attempting ESM OrbitControls import (CDN)');
-          const ocMod = await import('https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js');
-          const OrbitControls = ocMod.OrbitControls;
-          console.log('sim3d: ESM OrbitControls import succeeded');
-          initWithTHREE(THREE, OrbitControls);
-          return;
-        }catch(jsmErr){
-          console.warn('sim3d: ESM OrbitControls import failed, will try local module then UMD OrbitControls next', jsmErr);
-          try{
-            console.log('sim3d: attempting local OrbitControls.module import');
-            const ocLocal = await import('/static/js/OrbitControls.module.js');
-            const OrbitControls = ocLocal.OrbitControls || ocLocal.default;
-            console.log('sim3d: local OrbitControls.module import succeeded');
-            initWithTHREE(THREE, OrbitControls);
-            return;
-          }catch(localErr){
-            console.warn('sim3d: local module OrbitControls import failed, will try UMD fallbacks', localErr);
+        const root = document.getElementById('schemRoot'); if(!root) return; root.innerHTML = '';
+        const cfg = (function(){ try{ return JSON.parse(localStorage.getItem('barSchemConfig')||'{}') }catch(_){ return {}; } })();
+        const lengths = (cfg.lengths) || { shoulder:80, elbow:70, wrist:50 };
+        // center drawing based on the parent SVG size so the arm is centered
+        const svg = root.ownerSVGElement || root.parentNode;
+        const w = (svg && svg.clientWidth) || parseInt(svg && svg.getAttribute && svg.getAttribute('width')) || 360;
+        const h = (svg && svg.clientHeight) || parseInt(svg && svg.getAttribute && svg.getAttribute('height')) || 360;
+        let x = Math.round(w/2 - 20), y = Math.round(h/2), angleAccum = 0;
+        const __joints = ['shoulder','elbow','wrist'];
+        for(let __idx=0; __idx<__joints.length; __idx++){
+          const j = __joints[__idx];
+          const ang = (window.latestPositions && typeof window.latestPositions[j]==='number')? window.latestPositions[j] : 90;
+          const off = (cfg.offsets && typeof cfg.offsets[j]==='number')? cfg.offsets[j] : 0;
+          const rel = (ang - 90) + off; angleAccum += rel;
+          const L = lengths[j] || 60;
+          const style = (cfg.styles && cfg.styles[j]) || 'straight';
+          const color = (cfg.colors && cfg.colors[j]) ? cfg.colors[j] : (cfg.color || '#7cc9ff');
+          const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+          g.setAttribute('transform', `translate(${x},${y}) rotate(${angleAccum})`);
+          const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          const barHeight = 12;
+          if(style === 'l'){
+            rect.setAttribute('x', '0');
+            rect.setAttribute('y', String(-Math.round(barHeight/2)));
+            rect.setAttribute('width', String(Math.max(6, L)));
+            rect.setAttribute('height', String(barHeight));
+            rect.setAttribute('fill', color);
+            g.appendChild(rect);
+            const capThickness = 6;
+            const capLength = Math.max(L, 8);
+            const cap = document.createElementNS('http://www.w3.org/2000/svg','rect');
+            cap.setAttribute('x', String(L - Math.round(capThickness/2)));
+            cap.setAttribute('y', String(-Math.round(capLength/2)));
+            cap.setAttribute('width', String(capThickness));
+            cap.setAttribute('height', String(capLength));
+            cap.setAttribute('fill', color);
+            g.appendChild(cap);
+            const jointStart = document.createElementNS('http://www.w3.org/2000/svg','circle');
+            jointStart.setAttribute('cx','0'); jointStart.setAttribute('cy','0'); jointStart.setAttribute('r','3'); jointStart.setAttribute('fill','#ffd166'); jointStart.setAttribute('opacity','0.95');
+            g.appendChild(jointStart);
+            const jointEnd = document.createElementNS('http://www.w3.org/2000/svg','circle');
+            jointEnd.setAttribute('cx', String(L)); jointEnd.setAttribute('cy','0'); jointEnd.setAttribute('r','3'); jointEnd.setAttribute('fill','#ffd166'); jointEnd.setAttribute('opacity','0.95');
+            g.appendChild(jointEnd);
+            root.appendChild(g);
+            const theta = angleAccum * Math.PI/180;
+            const advance = L;
+            x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
+          } else {
+            rect.setAttribute('x','0');
+            rect.setAttribute('y','-6');
+            rect.setAttribute('width', String(Math.max(6,L)));
+            rect.setAttribute('height','12'); rect.setAttribute('fill', color);
+            g.appendChild(rect);
+            root.appendChild(g);
+            const theta = angleAccum * Math.PI/180;
+            const advance = L;
+            x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
           }
         }
+        // READY stamp removed to restore minimal schematic
+          // draw base footprint at initial center
+          try{
+            const bf = document.createElementNS('http://www.w3.org/2000/svg','rect');
+            const bw = 60; const bh = 36;
+            bf.setAttribute('x', String(Math.round((svg.clientWidth||360)/2 - bw/2)));
+            bf.setAttribute('y', String(Math.round((svg.clientHeight||360)/2 - bh/2)));
+            bf.setAttribute('width', String(bw)); bf.setAttribute('height', String(bh)); bf.setAttribute('fill', 'rgba(255,255,255,0.03)'); bf.setAttribute('stroke','rgba(255,255,255,0.06)');
+            root.insertBefore(bf, root.firstChild);
+          }catch(e){}
+      }catch(e){ console.warn('drawBarSchematic failed', e); }
+    }
 
-        // If ES-module controls failed (CDN blocked or import map not honored), try UMD OrbitControls (CDN then local)
+    /* Calibration modal markup + helpers */
+    /* Store Position / Library modal */
+    function buildStoreModal(){
+      if(document.getElementById('storeModal')) return;
+      const div = document.createElement('div'); div.id='storeModal'; div.style.display='none';
+      div.innerHTML = `
+        <div id="storeOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:1200">
+          <div style="width:820px;max-width:98%;background:#07121a;padding:12px;border-radius:8px;color:#e6f6ff;position:relative">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <strong>Store Position</strong>
+              <div style="display:flex;gap:8px;align-items:center"><button id="storeCloseBtn">Close</button></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <button class="store-tab" data-tab="save">Save</button>
+              <button class="store-tab" data-tab="library">Library</button>
+            </div>
+            <div id="storeContent" style="max-height:62vh;overflow:auto;padding-right:8px">
+              <div id="storePane-save" class="store-pane">
+                <div style="display:flex;gap:12px">
+                  <div style="width:360px">
+                    <svg id="storePreviewSvg" width="360" height="260" style="background:#021216;border-radius:6px"></svg>
+                    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+                      <input id="store_name" placeholder="Position name" style="flex:1;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.04)">
+                      <button id="storeSaveBtn">Save</button>
+                      <button id="storeDeleteBtn">Delete</button>
+                    </div>
+                    <div id="storeMsg" style="font-size:12px;color:#9fb2c8;margin-top:6px"></div>
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-weight:700;margin-bottom:6px">Current angles</div>
+                    <pre id="store_positions" style="background:#04141a;padding:8px;border-radius:6px;max-height:360px;overflow:auto"></pre>
+                  </div>
+                </div>
+              </div>
+              <div id="storePane-library" class="store-pane" style="display:none">
+                <div style="display:flex;gap:12px">
+                  <div style="width:360px">
+                    <svg id="storePreviewSvgLib" width="360" height="260" style="background:#021216;border-radius:6px"></svg>
+                  </div>
+                  <div style="flex:1">
+                    <div style="font-weight:700;margin-bottom:6px">Saved Positions Library</div>
+                    <div id="savedLibrary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(div);
+      document.getElementById('storeCloseBtn').addEventListener('click', ()=>{ document.getElementById('storeModal').style.display='none'; });
+      document.getElementById('storeSaveBtn').addEventListener('click', saveCurrentPosition);
+      // export / import UI
+      const expBtn = document.createElement('button'); expBtn.id = 'storeExportBtn'; expBtn.textContent = 'Export'; expBtn.style.marginLeft = '6px';
+      const impBtn = document.createElement('button'); impBtn.id = 'storeImportBtn'; impBtn.textContent = 'Import'; impBtn.style.marginLeft = '6px';
+      const toolsRow = div.querySelector('#storePane-save > div');
+      if(toolsRow){
+        toolsRow.appendChild(expBtn);
+        toolsRow.appendChild(impBtn);
+      }
+
+      expBtn.addEventListener('click', async () => {
         try{
-          // prefer local UMD OrbitControls first (offline-friendly), then CDN
-          try{ await loadScript('/static/js/OrbitControls.js'); }
-          catch(_localErr){ try{ await loadScript('https://unpkg.com/three@0.158.0/examples/js/controls/OrbitControls.js'); }catch(_cdnErr){ throw _cdnErr; } }
-          const OrbitCtor = THREE.OrbitControls || window.OrbitControls || (window.THREE && window.THREE.OrbitControls);
-          if(!OrbitCtor) throw new Error('OrbitControls not found after UMD load');
-          initWithTHREE(THREE, OrbitCtor);
-          return;
-        }catch(umdErr){
-          console.warn('UMD OrbitControls load failed, will try full UMD three+controls fallback', umdErr);
-        }
-      }catch(e){
-        console.warn('Primary module path failed', e);
-      }
+          const res = await fetch('/api/saved_positions/export');
+          if(res && res.ok){
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'saved_positions_export.json';
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            const msgEl = document.getElementById('storeMsg'); if(msgEl) msgEl.textContent = 'Export started';
+          }
+        }catch(e){ console.warn(e); const msgEl = document.getElementById('storeMsg'); if(msgEl) msgEl.textContent = 'Export failed'; }
+      });
 
-      // Full UMD fallback: load three.min.js + OrbitControls UMD (CDN then local)
+      impBtn.addEventListener('click', () => {
+        try{
+          const input = document.createElement('input');
+          input.type = 'file'; input.accept = 'application/json';
+          input.onchange = async (ev) => {
+            try{
+              const f = ev.target.files[0]; if(!f) return;
+              const txt = await f.text();
+              let parsed = null;
+              try{ parsed = JSON.parse(txt); }catch(e){ const msgEl = document.getElementById('storeMsg'); if(msgEl) msgEl.textContent='Invalid JSON'; return; }
+              try{
+                const res = await fetch('/api/saved_positions/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(parsed) });
+                if(res && res.ok){ const msgEl = document.getElementById('storeMsg'); if(msgEl) msgEl.textContent='Import OK'; await renderSavedLibrary(); }
+                else{ const msgEl = document.getElementById('storeMsg'); if(msgEl) msgEl.textContent='Import failed'; }
+              }catch(e){ console.warn(e); const msgEl = document.getElementById('storeMsg'); if(msgEl) msgEl.textContent='Import error'; }
+            }catch(e){ console.warn(e); }
+          };
+          input.click();
+        }catch(e){ console.warn(e); }
+      });
+
+      document.getElementById('storeDeleteBtn').addEventListener('click', deleteNamedPosition);
+
+      // header library button opens modal directly on library tab
       try{
-        // prefer local UMD first (offline): three + controls
-        try{ await loadScript('/static/js/three.min.js'); await loadScript('/static/js/OrbitControls.js'); }
-        catch(_localErr){ try{ await loadScript('https://unpkg.com/three@0.158.0/build/three.min.js'); await loadScript('https://unpkg.com/three@0.158.0/examples/js/controls/OrbitControls.js'); }catch(_cdnErr){ throw _cdnErr; } }
-        const THREEglob = window.THREE;
-        const Orbit = window.OrbitControls || (THREEglob && THREEglob.OrbitControls);
-        if(!THREEglob || !Orbit) throw new Error('THREE or OrbitControls missing after UMD fallback');
-        initWithTHREE(THREEglob, Orbit);
+        const libBtn = document.getElementById('libraryBtn');
+        if(libBtn){
+          libBtn.addEventListener('click', ()=>{
+            buildStoreModal();
+            const modal = document.getElementById('storeModal');
+            if(!modal) return;
+            modal.style.display = 'block';
+            // switch to library tab
+            const tab = modal.querySelector('.store-tab[data-tab="library"]');
+            if(tab) tab.click();
+            renderSavedLibrary();
+          });
+        }
+      }catch(_){ }
+      // tab handling
+      Array.from(div.querySelectorAll('.store-tab')).forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const t = b.dataset.tab;
+          Array.from(div.querySelectorAll('.store-pane')).forEach(p=> p.style.display = 'none');
+          const sel = div.querySelector('#storePane-'+t); if(sel) sel.style.display = '';
+          // render previews appropriately
+          if(t === 'save'){ try{ renderStorePreview(); }catch(_){ } }
+          if(t === 'library'){ try{ renderSavedLibrary(); drawPreview('storePreviewSvgLib', window.latestPositions); }catch(_){ } }
+        });
+      });
+    }
+
+    function openStoreModal(){
+      buildStoreModal();
+      const modal = document.getElementById('storeModal'); if(!modal) return; modal.style.display='block';
+      renderStorePreview(); renderSavedLibrary();
+    }
+
+    function renderStorePreview(){
+      try{
+        const svg = document.getElementById('storePreviewSvg'); if(!svg) return; drawPreview('storePreviewSvg', window.latestPositions);
+        const txt = document.getElementById('store_positions'); if(txt) txt.textContent = JSON.stringify(window.latestPositions || {}, null, 2);
+      }catch(_){ }
+    }
+
+    // Reusable preview drawer — draws a simple 3-link schematic into the SVG with given id
+    function drawPreview(svgId, positions, cfgLengths){
+      try{
+        const root = document.getElementById(svgId); if(!root) return; while(root.firstChild) root.removeChild(root.firstChild);
+        // allow svg to preserve aspect and compute center
+        try{ root.setAttribute('preserveAspectRatio','xMidYMid meet'); }catch(_){ }
+        const cfg = (function(){ try{ return JSON.parse(localStorage.getItem('barSchemConfig')||'{}') }catch(_){ return {}; } })();
+        const lengths = cfgLengths || (cfg.lengths) || { shoulder:80, elbow:70, wrist:50 };
+        const w = root.clientWidth || parseInt(root.getAttribute('width')) || 360;
+        const h = root.clientHeight || parseInt(root.getAttribute('height')) || 260;
+        let x = Math.round(w/2 - 20), y = Math.round(h/2), angleAccum = 0;
+        ['shoulder','elbow','wrist'].forEach((j, idx)=>{
+          const ang = (positions && typeof positions[j]==='number')? positions[j] : 90;
+          const off = (cfg.offsets && typeof cfg.offsets[j]==='number')? cfg.offsets[j] : 0;
+          const rel = (ang - 90) + off; angleAccum += rel;
+          const L = lengths[j] || 60;
+          const style = (cfg.styles && cfg.styles[j]) || 'straight';
+          const color = (cfg.colors && cfg.colors[j]) ? cfg.colors[j] : (cfg.color || '#7cc9ff');
+          const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+          g.setAttribute('transform', `translate(${x},${y}) rotate(${angleAccum})`);
+          const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          const barHeight = 12;
+          if(style === 'l'){
+            rect.setAttribute('x', '0');
+            rect.setAttribute('y', String(-Math.round(barHeight/2)));
+            rect.setAttribute('width', String(Math.max(6, L)));
+            rect.setAttribute('height', String(barHeight));
+            rect.setAttribute('fill', color);
+            g.appendChild(rect);
+            // perpendicular cap at the far end (make cap at least as long as the bar)
+            const capThickness = 6;
+            const capLength = Math.max(L, 8);
+            const cap = document.createElementNS('http://www.w3.org/2000/svg','rect');
+            cap.setAttribute('x', String(L - Math.round(capThickness/2)));
+            cap.setAttribute('y', String(-Math.round(capLength/2)));
+            cap.setAttribute('width', String(capThickness));
+            cap.setAttribute('height', String(capLength));
+            cap.setAttribute('fill', color);
+            g.appendChild(cap);
+            // joint marker at far end
+            const joint = document.createElementNS('http://www.w3.org/2000/svg','circle');
+            joint.setAttribute('cx', String(L)); joint.setAttribute('cy','0'); joint.setAttribute('r','3'); joint.setAttribute('fill','#ffffff'); joint.setAttribute('opacity','0.95');
+            g.appendChild(joint);
+            root.appendChild(g);
+            const theta = angleAccum * Math.PI/180;
+            const advance = L;
+            x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
+          } else {
+            rect.setAttribute('x','0');
+            rect.setAttribute('y','-6');
+            rect.setAttribute('width', String(Math.max(6,L)));
+            rect.setAttribute('height','12'); rect.setAttribute('fill', color);
+            g.appendChild(rect);
+            root.appendChild(g);
+            const theta = angleAccum * Math.PI/180;
+            const advance = L;
+            x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
+          }
+        });
+      }catch(e){ console.warn('drawPreview failed', e); }
+    }
+
+    async function savedPositionsLoad(){
+      // Try server first, fallback to localStorage
+      try{
+        const res = await fetch('/api/saved_positions');
+        if(res && res.ok){ const j = await res.json(); return j.saved || []; }
+      }catch(_){ }
+      try{ return JSON.parse(localStorage.getItem('saved_positions')||'[]'); }catch(_){ return []; }
+    }
+    async function savedPositionsSave(arr){
+      // Try server persistence for each item; as a fallback, write localStorage
+      try{
+        // write full list to server by upserting each item
+        for(const it of arr){ try{ await fetch('/api/saved_positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: it.name, positions: it.positions }) }); }catch(_){ }
+        }
         return;
-      }catch(err2){
-        console.warn('UMD full fallback failed', err2);
-        const info = document.getElementById('info'); if(info) info.textContent = '3D module failed to load — offline or blocked. Buttons still work.';
-        const home = document.getElementById('homeBtn'); if(home) home.addEventListener('click', ()=>fetch('/api/home',{method:'POST'}).catch(()=>{}));
-        const reset = document.getElementById('resetBtn'); if(reset) reset.addEventListener('click', ()=>{ alert('Reset view unavailable (3D failed to load)'); });
-      }
+      }catch(_){ }
+      try{ localStorage.setItem('saved_positions', JSON.stringify(arr)); }catch(_){ }
+    }
+
+    async function saveCurrentPosition(){
+      try{
+        const nameEl = document.getElementById('store_name'); const name = nameEl && nameEl.value && nameEl.value.trim(); if(!name){ document.getElementById('storeMsg').textContent='Please enter a name'; return; }
+        const pos = Object.assign({}, window.latestPositions || {});
+        const payload = { name: name, positions: pos };
+        try{
+          const res = await fetch('/api/saved_positions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          if(res && res.ok){ document.getElementById('storeMsg').textContent='Saved (server)'; await renderSavedLibrary(); return; }
+        }catch(_){ }
+        // fallback local
+        try{
+          const arr = JSON.parse(localStorage.getItem('saved_positions')||'[]');
+          const idx = arr.findIndex(x=>x.name===name);
+          const item = { name: name, positions: pos, ts: Date.now() };
+          if(idx>=0) arr[idx] = item; else arr.push(item);
+          localStorage.setItem('saved_positions', JSON.stringify(arr));
+          document.getElementById('storeMsg').textContent='Saved (local)';
+          await renderSavedLibrary();
+        }catch(e){ console.warn(e); document.getElementById('storeMsg').textContent='Save failed'; }
+      }catch(e){ console.warn(e); }
+    }
+
+    async function deleteNamedPosition(){
+      try{
+        const nameEl = document.getElementById('store_name'); const name = nameEl && nameEl.value && nameEl.value.trim(); if(!name){ document.getElementById('storeMsg').textContent='Enter name to delete'; return; }
+        try{
+          const res = await fetch('/api/saved_positions', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: name }) });
+          if(res && res.ok){ document.getElementById('storeMsg').textContent='Deleted'; await renderSavedLibrary(); return; }
+        }catch(_){ }
+        // fallback local
+        try{ let arr = JSON.parse(localStorage.getItem('saved_positions')||'[]'); arr = arr.filter(x=>x.name!==name); localStorage.setItem('saved_positions', JSON.stringify(arr)); document.getElementById('storeMsg').textContent='Deleted (local)'; await renderSavedLibrary(); }catch(e){ console.warn(e); }
+      }catch(e){ console.warn(e); }
+    }
+
+    async function renderSavedLibrary(){
+      try{
+        const lib = document.getElementById('savedLibrary'); if(!lib) return; lib.innerHTML = '';
+        const arr = await savedPositionsLoad();
+        if(!arr || !arr.length){ lib.innerHTML = '<div style="color:#9fb2c8">No saved positions</div>'; return; }
+        arr.forEach(item=>{
+          const card = document.createElement('div'); card.style.background='#07202a'; card.style.padding='8px'; card.style.borderRadius='6px'; card.style.cursor='default';
+          // center thumbnail and title
+          card.style.display = 'flex'; card.style.flexDirection = 'column'; card.style.alignItems = 'center';
+          const title = document.createElement('div'); title.textContent = item.name; title.style.fontWeight='700'; title.style.marginBottom='6px'; title.style.textAlign = 'center';
+          const pv = document.createElementNS('http://www.w3.org/2000/svg','svg'); pv.setAttribute('width','140'); pv.setAttribute('height','72'); pv.setAttribute('viewBox','0 0 140 72'); pv.style.background='rgba(0,0,0,0.06)'; pv.style.borderRadius='4px';
+          // draw preview using the shared drawer but scaled down
+          try{ drawPreviewSmall(pv, item.positions || {}); }catch(_){ }
+          const pvWrap = document.createElement('div'); pvWrap.style.marginBottom='6px'; pvWrap.style.display='flex'; pvWrap.style.justifyContent='center'; pvWrap.appendChild(pv);
+          const btns = document.createElement('div'); btns.style.display='flex'; btns.style.gap='6px';
+          const moveBtn = document.createElement('button'); moveBtn.textContent='Move';
+          moveBtn.addEventListener('click', ()=>{ moveToSavedPosition(item); });
+          const delBtn = document.createElement('button'); delBtn.textContent='Delete'; delBtn.addEventListener('click', async ()=>{ if(!confirm('Delete saved position "'+item.name+'"?')) return; try{ const res = await fetch('/api/saved_positions', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: item.name }) }); if(res && res.ok){ await renderSavedLibrary(); return; } }catch(_){ } let arr = JSON.parse(localStorage.getItem('saved_positions')||'[]'); arr = arr.filter(x=>x.name!==item.name); localStorage.setItem('saved_positions', JSON.stringify(arr)); await renderSavedLibrary(); });
+          btns.appendChild(moveBtn); btns.appendChild(delBtn);
+          card.title = Object.keys(item.positions||{}).map(k=>k+': '+item.positions[k]).join('\n');
+          card.appendChild(title); card.appendChild(pvWrap); card.appendChild(btns);
+          lib.appendChild(card);
+        });
+      }catch(e){ console.warn(e); }
+    }
+
+    // draw a small preview into an existing svg element
+    function drawPreviewSmall(svgEl, positions){
+      try{
+        while(svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+        try{ svgEl.setAttribute('preserveAspectRatio','xMidYMid meet'); }catch(_){ }
+        const cfg = (function(){ try{ return JSON.parse(localStorage.getItem('barSchemConfig')||'{}') }catch(_){ return {}; } })();
+        const lengths = cfg.lengths || { shoulder:30, elbow:40, wrist:50 };
+        const types = cfg.types || {};
+        const styles = cfg.styles || {};
+        const w = svgEl.clientWidth || parseInt(svgEl.getAttribute('width')) || 140;
+        const h = svgEl.clientHeight || parseInt(svgEl.getAttribute('height')) || 72;
+        const centerX = Math.round(w*0.15), centerY = Math.round(h/2);
+        let x = centerX, y = centerY, angleAccum = 0;
+        ['shoulder','elbow','wrist'].forEach((j, idx)=>{
+          const ang = (positions && typeof positions[j]==='number')? positions[j] : 90; angleAccum += (ang-90);
+          const L = Number(lengths[j]) || [30,40,50][idx];
+          const typ = types[j] || 'arm';
+          const style = styles[j] || 'straight';
+          const color = (cfg.colors && cfg.colors[j]) ? cfg.colors[j] : '#7cc9ff';
+          const g = document.createElementNS('http://www.w3.org/2000/svg','g'); g.setAttribute('transform', `translate(${x},${y}) rotate(${angleAccum})`);
+          const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          if(typ === 'rotation'){
+            const c = document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx','0'); c.setAttribute('cy','0'); c.setAttribute('r','4'); c.setAttribute('fill', color); g.appendChild(c);
+            svgEl.appendChild(g);
+            // rotations do not advance the chain
+            const theta0 = angleAccum*Math.PI/180;
+            const advance0 = 0;
+            x = x + Math.cos(theta0)*advance0; y = y + Math.sin(theta0)*advance0;
+          } else {
+            const barH = 6;
+            if(style === 'l'){
+              rect.setAttribute('x','0');
+              rect.setAttribute('y', String(-Math.round(barH/2)));
+              rect.setAttribute('width', String(Math.max(6,L)));
+              rect.setAttribute('height', String(barH)); rect.setAttribute('fill', color); g.appendChild(rect);
+              const capT = 4; const capL = Math.max(L, 6);
+              const cap = document.createElementNS('http://www.w3.org/2000/svg','rect');
+              cap.setAttribute('x', String(L - Math.round(capT/2)));
+              cap.setAttribute('y', String(-Math.round(capL/2)));
+              cap.setAttribute('width', String(capT)); cap.setAttribute('height', String(capL)); cap.setAttribute('fill', color); g.appendChild(cap);
+              // joint markers at both ends
+              const jointStart = document.createElementNS('http://www.w3.org/2000/svg','circle'); jointStart.setAttribute('cx','0'); jointStart.setAttribute('cy','0'); jointStart.setAttribute('r','2'); jointStart.setAttribute('fill','#ffd166'); g.appendChild(jointStart);
+              const jointEnd = document.createElementNS('http://www.w3.org/2000/svg','circle'); jointEnd.setAttribute('cx', String(L)); jointEnd.setAttribute('cy','0'); jointEnd.setAttribute('r','2'); jointEnd.setAttribute('fill','#ffd166'); g.appendChild(jointEnd);
+              svgEl.appendChild(g);
+              const theta = angleAccum*Math.PI/180;
+              const advance = L;
+              x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
+            } else {
+              rect.setAttribute('x','0'); rect.setAttribute('y','-3'); rect.setAttribute('width', String(Math.max(6,L))); rect.setAttribute('height','6'); rect.setAttribute('fill', color); g.appendChild(rect);
+              svgEl.appendChild(g);
+              const theta = angleAccum*Math.PI/180;
+              const advance = L;
+              x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
+            }
+          }
+        });
+      }catch(_){ }
+    }
+
+    async function moveToSavedPosition(item){
+      try{
+        const proceed = confirm('Move to "'+item.name+'"?\n\nWATCH ZONE: ensure area is clear and stop if collision. Proceed?');
+        if(!proceed) return;
+        const pos = item.positions || {};
+        for(const j of Object.keys(pos)){
+          try{
+            const payload = { joint: j, angle: Number(pos[j]), speed_mode: window.GLOBAL_SPEED_MODE || 'medium' };
+            await fetch('/api/move',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            await new Promise(r=>setTimeout(r, 120));
+          }catch(_){ }
+        }
+      }catch(e){ console.warn(e); }
+    }
+    function buildCalibrationModal(){
+      if(document.getElementById('calibModal')) return;
+      const div = document.createElement('div'); div.id='calibModal'; div.style.display='none';
+      div.innerHTML = `
+        <div id="calibOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:1200">
+          <div style="width:760px;max-width:95%;background:#07121a;padding:12px;border-radius:8px;color:#e6f6ff">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <strong>Calibration Editor</strong>
+              <div style="display:flex;gap:8px;align-items:center"><button id="calibCloseBtn">Close</button></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <button class="calib-tab" data-tab="motors">Motors</button>
+              <button class="calib-tab" data-tab="preview">Preview</button>
+            </div>
+            <div id="calibContent" style="max-height:60vh;overflow:auto;padding-right:8px">
+              <div id="calibPane-motors" class="calib-pane"></div>
+              <div id="calibPane-preview" class="calib-pane" style="display:none">
+                <div style="display:flex;gap:8px;align-items:flex-start">
+                  <svg id="calibPreviewSvg" width="360" height="200" style="background:#021216;border-radius:6px"></svg>
+                  <div style="flex:1">
+                    <div style="font-size:13px;color:#9fb2c8;margin-bottom:6px">Preview settings</div>
+                    <div id="previewSettingsPlaceholder" style="color:#9fb2c8;font-size:13px">Configure per-joint preview settings in the panel.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:8px;text-align:right;display:flex;gap:8px;justify-content:flex-end;align-items:center">
+              <button id="calibTempSaveBtn">Temp Save</button>
+              <button id="calibResetBtn">Reset</button>
+              <button id="calibSaveBtn">Save All</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(div);
+      document.getElementById('calibCloseBtn').addEventListener('click', closeCalibModal);
+      document.getElementById('calibSaveBtn').addEventListener('click', saveAllCalib);
+      // Temp Save: apply current joint settings without persisting to disk
+      try{ const tbtn = document.getElementById('calibTempSaveBtn'); if(tbtn) tbtn.addEventListener('click', tempSaveCalib); }catch(_){ }
+      // Reset: reload last saved calibration from server and re-render modal
+      try{ const rbtn = document.getElementById('calibResetBtn'); if(rbtn) rbtn.addEventListener('click', ()=>{ loadCalibration(); }); }catch(_){ }
+      // tab handling
+      Array.from(div.querySelectorAll('.calib-tab')).forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const t = b.dataset.tab;
+          Array.from(div.querySelectorAll('.calib-pane')).forEach(p=> p.style.display = 'none');
+          const sel = div.querySelector('#calibPane-'+t); if(sel) sel.style.display = '';
+        });
+      });
+    }
+
+    function openCalibModal(){
+      buildCalibrationModal();
+      const modal = document.getElementById('calibModal'); if(!modal) return;
+      modal.style.display = 'block';
+      loadCalibration();
+    }
+
+    function closeCalibModal(){
+      const modal = document.getElementById('calibModal'); if(!modal) return; modal.style.display='none';
+    }
+
+    async function loadCalibration(){
+      try{
+        const res = await fetch('/api/calibration'); const data = await res.json();
+        const content = document.getElementById('calibContent'); if(!content) return; 
+        const motorsPane = document.getElementById('calibPane-motors');
+        const previewPane = document.getElementById('calibPane-preview');
+        motorsPane.innerHTML = '';
+        const joints = Object.keys(data.limits || {});
+        // store a working draft so the UI edits update an in-memory model for saveAllCalib
+        window._calibDraft = JSON.parse(JSON.stringify(data || {}));
+        // ensure reverse flags from server are present in the draft
+        try{ window._calibDraft.reverse = Object.assign({}, (data && data.reverse) || {}, window._calibDraft.reverse || {}); }catch(_){ window._calibDraft.reverse = window._calibDraft.reverse || {}; }
+
+        // Motors pane: single dropdown to pick a joint and edit all settings for that motor
+        motorsPane.innerHTML = '';
+        const selRow = document.createElement('div'); selRow.style.display='flex'; selRow.style.gap='8px'; selRow.style.alignItems='center';
+        const sel = document.createElement('select'); sel.id='calib_motor_select'; sel.style.minWidth='180px';
+        joints.forEach(j=>{ const opt = document.createElement('option'); opt.value=j; opt.textContent = j; sel.appendChild(opt); });
+        selRow.appendChild(sel);
+        const applyBtn = document.createElement('button'); applyBtn.textContent='Apply Move'; selRow.appendChild(applyBtn);
+        motorsPane.appendChild(selRow);
+
+        const fields = document.createElement('div'); fields.id='calib_motor_fields'; fields.style.marginTop='8px'; motorsPane.appendChild(fields);
+
+        function renderMotorFields(joint){
+          const d = window._calibDraft || {};
+          const limits = (d.limits && d.limits[joint]) || [0,180];
+          const step = (d.step && d.step[joint]) || 5;
+          const home = (d.home && d.home[joint]) || ((joint==='hand')?0:90);
+          const pulse = (d.pulse && d.pulse[joint]) || {};
+          fields.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;text-transform:capitalize">${joint}</div><div style="font-size:12px;color:#9fb2c8">channel: ${joint}</div></div>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+              <input id="fld_test_range" type="range" min="0" max="180" value="${home}" style="flex:1">
+              <select id="fld_test_mode" style="width:110px;margin-left:6px">
+                <option value="slow">Slow</option>
+                <option value="medium" selected>Medium</option>
+                <option value="fast">Fast</option>
+              </select>
+              <div id="fld_test_val" style="width:64px;text-align:center;font-weight:700">${home}°</div>
+            </div>
+              <div style="width:90px"><label>Home: <input id="fld_home" type="number" value="${home}" style="width:100%"></label></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <div style="flex:1"><label>Pulse min: <input id="fld_pmin" type="number" value="${pulse.min_pulse || ''}" style="width:100%"></label></div>
+              <div style="flex:1"><label>Pulse max: <input id="fld_pmax" type="number" value="${pulse.max_pulse || ''}" style="width:100%"></label></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <div style="flex:1"><label>Min DPS: <input id="fld_min_dps" type="number" step="0.1" value="${(d.motion && d.motion[joint] && d.motion[joint].min_dps) || ''}" style="width:100%"></label></div>
+              <div style="flex:1"><label>Max DPS: <input id="fld_max_dps" type="number" step="0.1" value="${(d.motion && d.motion[joint] && d.motion[joint].max_dps) || ''}" style="width:100%"></label></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <div style="flex:1"><label>Slow (DPS): <input id="fld_speed_slow" type="number" step="0.1" value="${(d.motion && d.motion[joint] && d.motion[joint].speed_modes && d.motion[joint].speed_modes.slow) || ''}" style="width:100%"></label></div>
+              <div style="flex:1"><label>Medium (DPS): <input id="fld_speed_medium" type="number" step="0.1" value="${(d.motion && d.motion[joint] && d.motion[joint].speed_modes && d.motion[joint].speed_modes.medium) || ''}" style="width:100%"></label></div>
+              <div style="flex:1"><label>Fast (DPS): <input id="fld_speed_fast" type="number" step="0.1" value="${(d.motion && d.motion[joint] && d.motion[joint].speed_modes && d.motion[joint].speed_modes.fast) || ''}" style="width:100%"></label></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <div style="flex:1"><label>Step interval (s): <input id="fld_step_interval" type="number" step="0.01" value="${(d.motion && d.motion[joint] && d.motion[joint].step_interval) || 0.06}" style="width:100%"></label></div>
+            </div>
+            <div style="margin-top:8px"><label><input id="fld_rev" type="checkbox" ${((d.reverse && d.reverse[joint])? 'checked':'')}> Reverse rotation</label></div>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+              <input id="fld_test_range" type="range" min="0" max="180" value="${home}" style="flex:1">
+              <div id="fld_test_val" style="width:64px;text-align:center;font-weight:700">${home}°</div>
+            </div>
+            <hr style="border:none;border-top:1px solid rgba(255,255,255,0.03);margin:10px 0">
+          `;
+            // wire events
+          try{
+            document.getElementById('fld_test_range').addEventListener('input', (ev)=>{ document.getElementById('fld_test_val').textContent = ev.target.value + '°'; });
+            document.getElementById('fld_test_range').addEventListener('change', (ev)=>{ try{ const modeEl = document.getElementById('fld_test_mode'); const mode = modeEl ? modeEl.value : undefined; const body = { joint: joint, angle: Number(ev.target.value) }; if(mode) body.speed_mode = mode; fetch('/api/move',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify(body) }).catch(()=>{}); }catch(_){ } });
+            // allow changing the test speed mode without leaving the modal
+            try{ const modeEl = document.getElementById('fld_test_mode'); if(modeEl){ modeEl.addEventListener('change', ()=>{ const r = document.getElementById('fld_test_range'); if(r){ r.dispatchEvent(new Event('input')); } }); } }catch(_){ }
+            // create/update a small info element next to the mode selector and pre-fill selection from saved speed_modes
+            try{
+              const modeEl = document.getElementById('fld_test_mode');
+              if(modeEl){
+                let info = document.getElementById('fld_test_mode_info');
+                if(!info){ info = document.createElement('div'); info.id = 'fld_test_mode_info'; info.style.fontSize = '12px'; info.style.color = '#9fb2c8'; info.style.marginLeft = '6px'; modeEl.parentNode.insertBefore(info, document.getElementById('fld_test_val'));
+                }
+                const ms = (window._calibDraft && window._calibDraft.motion && window._calibDraft.motion[joint] && window._calibDraft.motion[joint].speed_modes) || null;
+                if(ms){
+                  const sslow = (typeof ms.slow !== 'undefined') ? ms.slow : '';
+                  const smed = (typeof ms.medium !== 'undefined') ? ms.medium : '';
+                  const sfast = (typeof ms.fast !== 'undefined') ? ms.fast : '';
+                  info.textContent = `Slow:${sslow} DPS · Med:${smed} DPS · Fast:${sfast} DPS`;
+                  // prefer medium if defined
+                  if(typeof ms.medium !== 'undefined'){ modeEl.value = 'medium'; }
+                  else if(typeof ms.slow !== 'undefined'){ modeEl.value = 'slow'; }
+                  else if(typeof ms.fast !== 'undefined'){ modeEl.value = 'fast'; }
+                }else{
+                  info.textContent = '';
+                }
+              }
+            }catch(_){ }
+            ['fld_min','fld_max','fld_step','fld_home','fld_pmin','fld_pmax','fld_min_dps','fld_max_dps','fld_speed_slow','fld_speed_medium','fld_speed_fast'].forEach(id=>{
+              const el = document.getElementById(id);
+              if(!el) return;
+              el.addEventListener('change', ()=>{
+                try{
+                  // write back to draft
+                  window._calibDraft = window._calibDraft || {};
+                  window._calibDraft.limits = window._calibDraft.limits || {};
+                  window._calibDraft.step = window._calibDraft.step || {};
+                  window._calibDraft.home = window._calibDraft.home || {};
+                  window._calibDraft.pulse = window._calibDraft.pulse || {};
+                  window._calibDraft.motion = window._calibDraft.motion || {};
+                  window._calibDraft.limits[joint] = window._calibDraft.limits[joint] || [0,180];
+                  window._calibDraft.limits[joint][0] = Number(document.getElementById('fld_min').value);
+                  window._calibDraft.limits[joint][1] = Number(document.getElementById('fld_max').value);
+                  window._calibDraft.step[joint] = Number(document.getElementById('fld_step').value);
+                  window._calibDraft.home[joint] = Number(document.getElementById('fld_home').value);
+                  window._calibDraft.pulse[joint] = window._calibDraft.pulse[joint] || {};
+                  const pmin = document.getElementById('fld_pmin').value; const pmax = document.getElementById('fld_pmax').value;
+                  if(pmin) window._calibDraft.pulse[joint].min_pulse = Number(pmin); else delete window._calibDraft.pulse[joint].min_pulse;
+                  if(pmax) window._calibDraft.pulse[joint].max_pulse = Number(pmax); else delete window._calibDraft.pulse[joint].max_pulse;
+                  // motion fields
+                  try{
+                    const minD = document.getElementById('fld_min_dps').value; const maxD = document.getElementById('fld_max_dps').value;
+                    if(minD){ window._calibDraft.motion[joint] = window._calibDraft.motion[joint] || {}; window._calibDraft.motion[joint].min_dps = Number(minD); }
+                    if(maxD){ window._calibDraft.motion[joint] = window._calibDraft.motion[joint] || {}; window._calibDraft.motion[joint].max_dps = Number(maxD); }
+                    // step interval
+                    try{ const si = document.getElementById('fld_step_interval').value; if(si){ window._calibDraft.motion[joint] = window._calibDraft.motion[joint] || {}; window._calibDraft.motion[joint].step_interval = Number(si); } }catch(_){ }
+                    // speed_modes fields
+                    try{
+                      const ss = document.getElementById('fld_speed_slow').value;
+                      const sm = document.getElementById('fld_speed_medium').value;
+                      const sf = document.getElementById('fld_speed_fast').value;
+                      if(ss || sm || sf){
+                        window._calibDraft.motion[joint] = window._calibDraft.motion[joint] || {};
+                        window._calibDraft.motion[joint].speed_modes = window._calibDraft.motion[joint].speed_modes || {};
+                        if(ss) window._calibDraft.motion[joint].speed_modes.slow = Number(ss); else delete window._calibDraft.motion[joint].speed_modes.slow;
+                        if(sm) window._calibDraft.motion[joint].speed_modes.medium = Number(sm); else delete window._calibDraft.motion[joint].speed_modes.medium;
+                        if(sf) window._calibDraft.motion[joint].speed_modes.fast = Number(sf); else delete window._calibDraft.motion[joint].speed_modes.fast;
+                      }
+                    }catch(_){ }
+                  }catch(_){ }
+                }catch(_){ }
+              });
+            });
+            // also wire step_interval change if present
+            try{ const siEl = document.getElementById('fld_step_interval'); if(siEl) siEl.addEventListener('change', ()=>{ try{ window._calibDraft.motion = window._calibDraft.motion || {}; window._calibDraft.motion[joint] = window._calibDraft.motion[joint] || {}; window._calibDraft.motion[joint].step_interval = Number(siEl.value); }catch(_){ } }); }catch(_){ }
+            // reverse checkbox wiring
+            try{ const revEl = document.getElementById('fld_rev'); if(revEl) revEl.addEventListener('change', ()=>{ try{ window._calibDraft.reverse = window._calibDraft.reverse || {}; window._calibDraft.reverse[joint] = !!revEl.checked; }catch(_){ } }); }catch(_){ }
+          }catch(_){ }
+        }
+
+        sel.addEventListener('change', ()=>{ renderMotorFields(sel.value); });
+        applyBtn.addEventListener('click', ()=>{ const j = sel.value; const r = document.getElementById('fld_test_range'); if(r) r.dispatchEvent(new Event('change')); });
+        // render initial
+        try{ renderMotorFields(joints[0]); }catch(_){ }
+        try{ showCalibMessage && showCalibMessage('Loaded calibration', 1500); }catch(_){ }
+        // build per-joint preview settings (type, length, style)
+        try{ buildPreviewSettings(joints); }catch(_){ }
+        try{ drawCalibPreview(); }catch(_){ }
+      }catch(e){ console.warn('loadCalibration failed', e); }
+    }
+
+    function drawCalibPreview(){
+      try{
+        const svg = document.getElementById('calibPreviewSvg'); if(!svg) return; while(svg.firstChild) svg.removeChild(svg.firstChild);
+        const cfg = (function(){ try{ return JSON.parse(localStorage.getItem('barSchemConfig')||'{}') }catch(_){ return {}; } })();
+        const lengths = cfg.lengths || { shoulder:80, elbow:70, wrist:50 };
+        const types = cfg.types || {};
+        const styles = cfg.styles || {};
+        const centerX = 40, centerY = 100; let x = centerX, y = centerY; let ang = 0;
+        const joints = ['shoulder','elbow','wrist'];
+        joints.forEach((j, idx)=>{
+          const L = Number(lengths[j]) || (idx===0?80:(idx===1?70:50));
+          const typ = (types[j] || 'arm');
+          const style = (styles[j] || 'straight');
+          const color = (cfg.colors && cfg.colors[j]) ? cfg.colors[j] : (idx===0? '#7cc9ff' : (idx===1? '#8ef6c2' : '#ffd166'));
+          if(typ === 'rotation'){
+            const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+            c.setAttribute('cx', String(x)); c.setAttribute('cy', String(y)); c.setAttribute('r','6'); c.setAttribute('fill',color);
+            svg.appendChild(c);
+          } else if(typ === 'graber'){
+            const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+            g.setAttribute('transform', `translate(${x},${y}) rotate(${ang})`);
+            const rect = document.createElementNS('http://www.w3.org/2000/svg','rect'); rect.setAttribute('x','0'); rect.setAttribute('y','-6'); rect.setAttribute('width', String(Math.max(6,L))); rect.setAttribute('height','12'); rect.setAttribute('fill', color);
+            g.appendChild(rect); svg.appendChild(g);
+            const theta = ang * Math.PI/180; x = x + Math.cos(theta)*L; y = y + Math.sin(theta)*L;
+          } else {
+            const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+            g.setAttribute('transform', `translate(${x},${y}) rotate(${ang})`);
+            const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+            const barH = 12;
+            if(style === 'l'){
+              // draw forward from origin, add perpendicular cap and joint markers at both ends
+              rect.setAttribute('x','0');
+              rect.setAttribute('y', String(-Math.round(barH/2)));
+              rect.setAttribute('width', String(Math.max(6,L)));
+              rect.setAttribute('height', String(barH)); rect.setAttribute('fill', color); g.appendChild(rect);
+              const capT = 6; const capL = Math.max(L, 8);
+              const cap = document.createElementNS('http://www.w3.org/2000/svg','rect');
+              cap.setAttribute('x', String(L - Math.round(capT/2)));
+              cap.setAttribute('y', String(-Math.round(capL/2)));
+              cap.setAttribute('width', String(capT)); cap.setAttribute('height', String(capL)); cap.setAttribute('fill', color); g.appendChild(cap);
+              const jointS = document.createElementNS('http://www.w3.org/2000/svg','circle'); jointS.setAttribute('cx','0'); jointS.setAttribute('cy','0'); jointS.setAttribute('r','3'); jointS.setAttribute('fill','#ffd166'); g.appendChild(jointS);
+              const jointE = document.createElementNS('http://www.w3.org/2000/svg','circle'); jointE.setAttribute('cx', String(L)); jointE.setAttribute('cy','0'); jointE.setAttribute('r','3'); jointE.setAttribute('fill','#ffd166'); g.appendChild(jointE);
+              svg.appendChild(g);
+              const theta = ang * Math.PI/180; const advance = L;
+              x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
+            } else {
+              rect.setAttribute('x', '0'); rect.setAttribute('y','-6'); rect.setAttribute('width', String(Math.max(6,L))); rect.setAttribute('height','12'); rect.setAttribute('fill', color);
+              g.appendChild(rect); svg.appendChild(g);
+              const theta = ang * Math.PI/180; const advance = L;
+              x = x + Math.cos(theta)*advance; y = y + Math.sin(theta)*advance;
+            }
+            ang += 10*(idx+1);
+          }
+        });
+      }catch(_){ }
+    }
+
+    // Build preview setting controls for each joint
+    function buildPreviewSettings(joints){
+      try{
+        const container = document.getElementById('calibPane-preview'); if(!container) return;
+        // create a settings area inside the preview pane
+        let area = document.getElementById('previewSettings');
+        if(!area){ area = document.createElement('div'); area.id = 'previewSettings'; area.style.display = 'flex'; area.style.flexDirection = 'column'; area.style.gap = '8px'; container.appendChild(area); }
+        area.innerHTML = '';
+        // load current config
+        const cfg = (function(){ try{ return JSON.parse(localStorage.getItem('barSchemConfig')||'{}') }catch(_){ return {}; } })();
+        cfg.lengths = cfg.lengths || {};
+        cfg.types = cfg.types || {};
+        cfg.styles = cfg.styles || {};
+        cfg.colors = cfg.colors || {};
+        joints.forEach(j=>{
+          const row = document.createElement('div'); row.style.display='flex'; row.style.gap='8px'; row.style.alignItems='center';
+          const lbl = document.createElement('div'); lbl.textContent = j; lbl.style.textTransform='capitalize'; lbl.style.width='90px';
+          const typeSel = document.createElement('select'); ['rotation','arm','graber'].forEach(opt=>{ const o = document.createElement('option'); o.value = opt; o.textContent = opt[0].toUpperCase()+opt.slice(1); typeSel.appendChild(o); });
+          typeSel.value = cfg.types[j] || (j==='base' ? 'rotation' : (j==='hand' ? 'graber' : 'arm'));
+          const styleSel = document.createElement('select'); ['straight','l'].forEach(opt=>{ const o=document.createElement('option'); o.value=opt; o.textContent = (opt==='straight'?'Straight':'L-Style'); styleSel.appendChild(o); });
+          styleSel.value = cfg.styles[j] || 'straight';
+          const lenInput = document.createElement('input'); lenInput.type='number'; lenInput.value = cfg.lengths[j] || (j==='shoulder'?80:(j==='elbow'?70:50)); lenInput.style.width='80px';
+          const colorInput = document.createElement('input'); colorInput.type = 'color'; colorInput.value = cfg.colors[j] || '#7cc9ff'; colorInput.title = 'Bar color';
+          // show/hide length/style based on type
+          function refreshDisplay(){ const t=typeSel.value; if(t==='arm'){ styleSel.style.display='inline-block'; lenInput.style.display='inline-block'; colorInput.style.display='inline-block'; } else if(t==='graber'){ styleSel.style.display='none'; lenInput.style.display='inline-block'; colorInput.style.display='inline-block'; } else { styleSel.style.display='none'; lenInput.style.display='none'; colorInput.style.display='inline-block'; } }
+          typeSel.addEventListener('change', ()=>{ cfg.types[j]=typeSel.value; refreshDisplay(); localStorage.setItem('barSchemConfig', JSON.stringify(cfg)); drawCalibPreview(); });
+          styleSel.addEventListener('change', ()=>{ cfg.styles[j]=styleSel.value; localStorage.setItem('barSchemConfig', JSON.stringify(cfg)); drawCalibPreview(); });
+          lenInput.addEventListener('input', ()=>{ cfg.lengths[j]=Number(lenInput.value)||0; localStorage.setItem('barSchemConfig', JSON.stringify(cfg)); drawCalibPreview(); });
+          colorInput.addEventListener('input', ()=>{ cfg.colors[j]=colorInput.value; localStorage.setItem('barSchemConfig', JSON.stringify(cfg)); drawCalibPreview(); });
+          refreshDisplay();
+          row.appendChild(lbl); row.appendChild(typeSel); row.appendChild(styleSel); row.appendChild(lenInput); row.appendChild(colorInput);
+          area.appendChild(row);
+        });
+      }catch(e){ console.warn('buildPreviewSettings failed', e); }
+    }
+
+    async function saveAllCalib(){
+      try{
+        // If we have a draft, iterate its joints and POST updates for each
+        const draft = window._calibDraft;
+        if(draft && (draft.limits || draft.home || draft.step || draft.pulse || draft.motion || draft.reverse)){
+          const joints = Object.keys(draft.limits || draft.home || draft.step || draft.pulse || draft.motion || draft.reverse || {});
+          // ensure we include all keys present in any section (including motion & reverse)
+          const extras = new Set(joints);
+          ['limits','home','step','pulse','motion','reverse'].forEach(k=>{ if(draft[k]) Object.keys(draft[k]).forEach(j=>extras.add(j)); });
+          const allJoints = Array.from(extras);
+          for(const j of allJoints){
+            try{
+              // prefer live DOM values if the calibration modal is open and this joint is currently selected
+              let payload = null;
+              try{
+                const modal = document.getElementById('calibModal');
+                const sel = modal && modal.querySelector && modal.querySelector('#calib_motor_select');
+                const selectedJoint = sel && sel.value;
+                if(modal && modal.style && modal.style.display !== 'none' && selectedJoint === j){
+                  // read inputs directly to capture typed-but-unblurred values
+                  const vmin = document.getElementById('fld_min') && document.getElementById('fld_min').value;
+                  const vmax = document.getElementById('fld_max') && document.getElementById('fld_max').value;
+                  const vstep = document.getElementById('fld_step') && document.getElementById('fld_step').value;
+                  const vhome = document.getElementById('fld_home') && document.getElementById('fld_home').value;
+                  const vpmin = document.getElementById('fld_pmin') && document.getElementById('fld_pmin').value;
+                  const vpmax = document.getElementById('fld_pmax') && document.getElementById('fld_pmax').value;
+                  const vmin_dps = document.getElementById('fld_min_dps') && document.getElementById('fld_min_dps').value;
+                  const vmax_dps = document.getElementById('fld_max_dps') && document.getElementById('fld_max_dps').value;
+                  const vstep_int = document.getElementById('fld_step_interval') && document.getElementById('fld_step_interval').value;
+                  const vrev = document.getElementById('fld_rev') && document.getElementById('fld_rev').checked;
+                  payload = { joint: j, min: Number(vmin||0), max: Number(vmax||180), step: Number(vstep||5), home: Number(vhome||(j==='hand'?0:90)) };
+                  if(vpmin) payload.pulse_min = Number(vpmin);
+                  if(vpmax) payload.pulse_max = Number(vpmax);
+                  if(vmin_dps) payload.min_dps = Number(vmin_dps);
+                  if(vmax_dps) payload.max_dps = Number(vmax_dps);
+                  if(vstep_int) payload.step_interval = Number(vstep_int);
+                  // speed mode DPS
+                  if(document.getElementById('fld_speed_slow') && document.getElementById('fld_speed_slow').value) payload.speed_slow = Number(document.getElementById('fld_speed_slow').value);
+                  if(document.getElementById('fld_speed_medium') && document.getElementById('fld_speed_medium').value) payload.speed_medium = Number(document.getElementById('fld_speed_medium').value);
+                  if(document.getElementById('fld_speed_fast') && document.getElementById('fld_speed_fast').value) payload.speed_fast = Number(document.getElementById('fld_speed_fast').value);
+                  payload.reverse = !!vrev;
+                }
+              }catch(_){ payload = null; }
+
+              // fallback to draft values if no live DOM values were read
+              if(!payload){
+                const lim = (draft.limits && draft.limits[j]) || [0,180];
+                payload = { joint: j, min: Number(lim[0]||0), max: Number(lim[1]||180), step: Number((draft.step && draft.step[j])||5), home: Number((draft.home && draft.home[j])||(j==='hand'?0:90)) };
+                if(draft.pulse && draft.pulse[j]){
+                  if(typeof draft.pulse[j].min_pulse !== 'undefined') payload.pulse_min = Number(draft.pulse[j].min_pulse);
+                  if(typeof draft.pulse[j].max_pulse !== 'undefined') payload.pulse_max = Number(draft.pulse[j].max_pulse);
+                }
+                if(draft.motion && draft.motion[j]){
+                  if(typeof draft.motion[j].min_dps !== 'undefined') payload.min_dps = Number(draft.motion[j].min_dps);
+                  if(typeof draft.motion[j].max_dps !== 'undefined') payload.max_dps = Number(draft.motion[j].max_dps);
+                  if(typeof draft.motion[j].step_interval !== 'undefined') payload.step_interval = Number(draft.motion[j].step_interval);
+                  // draft speed_modes
+                  try{ if(draft.motion[j].speed_modes){ const sm = draft.motion[j].speed_modes; if(typeof sm.slow !== 'undefined') payload.speed_slow = Number(sm.slow); if(typeof sm.medium !== 'undefined') payload.speed_medium = Number(sm.medium); if(typeof sm.fast !== 'undefined') payload.speed_fast = Number(sm.fast); } }catch(_){ }
+                }
+                try{ payload.reverse = !!(draft.reverse && draft.reverse[j]); }catch(_){ payload.reverse = false; }
+              }
+
+              await fetch('/api/calibration/update', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(()=>{});
+            }catch(_){ }
+          }
+          // server persists reverse flags now; no localStorage needed
+          // persist once
+          try{ await fetch('/api/calibration/save', { method:'POST' }).catch(()=>{}); }catch(_){ }
+          try{ showCalibMessage && showCalibMessage('Saved'); }catch(_){ }
+        }
+        closeCalibModal();
+      }catch(e){ console.warn('saveAllCalib failed', e); }
+    }
+
+    // small helper: show a transient message in the calibration modal
+    function showCalibMessage(msg, timeout=3000){
+      try{
+        let modal = document.getElementById('calibModal'); if(!modal) return;
+        let cont = modal.querySelector && modal.querySelector('.calib-msg');
+        if(!cont){ cont = document.createElement('div'); cont.className='calib-msg'; cont.style.position='absolute'; cont.style.right='18px'; cont.style.top='18px'; cont.style.padding='6px 10px'; cont.style.background='rgba(0,0,0,0.6)'; cont.style.border='1px solid rgba(255,255,255,0.04)'; cont.style.borderRadius='6px'; cont.style.color='#bfeaf5'; cont.style.fontSize='13px'; cont.style.zIndex='1300'; modal.querySelector('#calibOverlay > div').appendChild(cont); }
+        cont.textContent = msg;
+        cont.style.opacity = '1';
+        if(cont._tm) clearTimeout(cont._tm);
+        cont._tm = setTimeout(()=>{ try{ cont.style.opacity = '0'; }catch(_){ } }, timeout);
+      }catch(_){ }
+    }
+
+    // Apply the currently selected motor settings immediately but do NOT persist to disk.
+    // This lets the user 'try' calibration changes live in the setup UI.
+    async function tempSaveCalib(){
+      try{
+        const modal = document.getElementById('calibModal'); if(!modal) return;
+        const sel = modal.querySelector && modal.querySelector('#calib_motor_select'); if(!sel) return;
+        const joint = sel.value;
+        // read DOM fields for the selected joint
+        const vmin = document.getElementById('fld_min') && document.getElementById('fld_min').value;
+        const vmax = document.getElementById('fld_max') && document.getElementById('fld_max').value;
+        const vstep = document.getElementById('fld_step') && document.getElementById('fld_step').value;
+        const vhome = document.getElementById('fld_home') && document.getElementById('fld_home').value;
+        const vpmin = document.getElementById('fld_pmin') && document.getElementById('fld_pmin').value;
+        const vpmax = document.getElementById('fld_pmax') && document.getElementById('fld_pmax').value;
+        const vmin_dps = document.getElementById('fld_min_dps') && document.getElementById('fld_min_dps').value;
+        const vmax_dps = document.getElementById('fld_max_dps') && document.getElementById('fld_max_dps').value;
+        const vstep_int = document.getElementById('fld_step_interval') && document.getElementById('fld_step_interval').value;
+        const vrev = document.getElementById('fld_rev') && document.getElementById('fld_rev').checked;
+        const payload = { joint: joint, min: Number(vmin||0), max: Number(vmax||180), step: Number(vstep||5), home: Number(vhome||(joint==='hand'?0:90)) };
+        if(vpmin) payload.pulse_min = Number(vpmin);
+        if(vpmax) payload.pulse_max = Number(vpmax);
+        if(vmin_dps) payload.min_dps = Number(vmin_dps);
+        if(vmax_dps) payload.max_dps = Number(vmax_dps);
+        if(vstep_int) payload.step_interval = Number(vstep_int);
+        if(document.getElementById('fld_speed_slow') && document.getElementById('fld_speed_slow').value) payload.speed_slow = Number(document.getElementById('fld_speed_slow').value);
+        if(document.getElementById('fld_speed_medium') && document.getElementById('fld_speed_medium').value) payload.speed_medium = Number(document.getElementById('fld_speed_medium').value);
+        if(document.getElementById('fld_speed_fast') && document.getElementById('fld_speed_fast').value) payload.speed_fast = Number(document.getElementById('fld_speed_fast').value);
+        payload.reverse = !!vrev;
+
+        // POST update without calling /api/calibration/save — so changes apply immediately but are not persisted
+        await fetch('/api/calibration/update', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(()=>{});
+        // update local draft so UI reflects temp values
+        try{ window._calibDraft = window._calibDraft || {}; window._calibDraft.motion = window._calibDraft.motion || {}; window._calibDraft.motion[joint] = window._calibDraft.motion[joint] || {}; if(typeof payload.min_dps !== 'undefined') window._calibDraft.motion[joint].min_dps = payload.min_dps; if(typeof payload.max_dps !== 'undefined') window._calibDraft.motion[joint].max_dps = payload.max_dps; if(typeof payload.step_interval !== 'undefined') window._calibDraft.motion[joint].step_interval = payload.step_interval; window._calibDraft.reverse = window._calibDraft.reverse || {}; window._calibDraft.reverse[joint] = payload.reverse; }catch(_){ }
+        console.log('Temp saved calibration for', joint);
+      }catch(e){ console.warn('tempSaveCalib failed', e); }
+    }
+
+    function buildControls(){
+      try{
+        const container = document.getElementById('controlsList'); if(!container) return; container.innerHTML = '';
+        // Keep a persistent controlsMap so we can update inputs in-place when server reports moves
+        window.controlsMap = window.controlsMap || {};
+        JOINT_ORDER.forEach(j=>{
+          const card = document.createElement('div'); card.className='control-card';
+          const label = document.createElement('div'); label.textContent = j; label.style.textTransform='capitalize'; label.style.marginBottom='6px';
+          const row = document.createElement('div'); row.className='slider-row';
+          const input = document.createElement('input'); input.type='range'; input.min='0'; input.max='180'; input.value = window.latestPositions[j] || 90;
+          const val = document.createElement('div'); val.className='angle-val'; val.textContent = input.value + '°';
+          // smooth live control: send throttled updates while dragging, send immediate on change
+          input.addEventListener('input', ()=>{
+            val.textContent = input.value + '°';
+            window.latestPositions[j] = Number(input.value);
+            drawBarSchematic();
+            // throttle live send
+            try{
+              const cmap = window.controlsMap = window.controlsMap || {};
+              const entry = cmap[j] = cmap[j] || {};
+              if(entry._liveTimer) clearTimeout(entry._liveTimer);
+              entry._liveTimer = setTimeout(()=>{
+                  if(window.IS_LIVE){ try{ const mode = window.GLOBAL_SPEED_MODE || 'medium'; sendTarget(j, Number(input.value), null, mode); }catch(_){ } }
+                entry._liveTimer = null;
+              }, 200);
+            }catch(_){ }
+          });
+          input.addEventListener('change', ()=>{
+            try{ if(window.controlsMap && window.controlsMap[j] && window.controlsMap[j]._liveTimer){ clearTimeout(window.controlsMap[j]._liveTimer); window.controlsMap[j]._liveTimer = null; } }catch(_){ }
+            try{ const mode = window.GLOBAL_SPEED_MODE || 'medium'; sendMove(j, Number(input.value), mode); }catch(_){ sendMove(j, Number(input.value)); }
+            try{ localStorage.setItem('simPositions', JSON.stringify(window.latestPositions)); }catch(_){ }
+          });
+          // track user interaction to avoid server updates overriding slider while dragging
+          input.addEventListener('pointerdown', ()=>{ try{ window.controlsMap = window.controlsMap || {}; window.controlsMap[j] = window.controlsMap[j] || {}; window.controlsMap[j].dragging = true; }catch(_){ } });
+          input.addEventListener('pointerup', ()=>{ try{ const e=window.controlsMap && window.controlsMap[j]; if(e){ e.dragging = false; } }catch(_){ } try{ if(window.IS_LIVE){ const mode = (window.controlsMap && window.controlsMap[j] && window.controlsMap[j].speedMode) || 'medium'; sendMove(j, Number(input.value), mode); } }catch(_){ } });
+          // put slider and value in the row
+          row.appendChild(input); row.appendChild(val);
+          // row already appended
+          card.appendChild(label); card.appendChild(row); container.appendChild(card);
+          // store references for later updates
+          window.controlsMap[j] = { slider: input, valEl: val };
+        });
+      }catch(e){ console.warn('buildControls failed', e); }
+    }
+
+    // initial
+    try{ buildControls(); drawBarSchematic(); }catch(_){ }
+
+    // wire global speed selector in header
+    try{
+      const gsel = document.getElementById('globalSpeedSel');
+      window.GLOBAL_SPEED_MODE = (gsel && gsel.value) || 'medium';
+      if(gsel){ gsel.addEventListener('change', ()=>{ window.GLOBAL_SPEED_MODE = gsel.value; }); }
+    }catch(_){ window.GLOBAL_SPEED_MODE = 'medium'; }
+
+    // wire new store position top button
+    try{ const sp = document.getElementById('storePosBtn'); if(sp) sp.addEventListener('click', openStoreModal); }catch(_){ }
+
+    // basic buttons
+    try{ const setup = document.getElementById('setupBtn'); if(setup) setup.addEventListener('click', openCalibModal); }catch(_){ }
+    try{ const home = document.getElementById('homeBtn'); if(home) home.addEventListener('click', ()=>{
+        try{
+          if(window.IS_LIVE){
+            // Live: command the real robot
+            fetch('/api/home',{method:'POST'}).catch(()=>{});
+          } else {
+            // Simulation: reset local simulated positions and update UI
+            try{ window.latestPositions = Object.assign({}, DEFAULT_POS); }catch(_){ window.latestPositions = Object.assign({}, DEFAULT_POS); }
+            try{ localStorage.setItem('simPositions', JSON.stringify(window.latestPositions)); }catch(_){ }
+            try{ buildControls(); drawBarSchematic(); }catch(_){ }
+          }
+        }catch(_){ }
+      }); }catch(_){ }
+    try{ const em = document.getElementById('emergencyBtn'); if(em) em.addEventListener('click', ()=>fetch('/api/emergency',{method:'POST'}).catch(()=>{})); }catch(_){ }
+    try{ const mode = document.getElementById('modeToggleBtn'); if(mode) mode.addEventListener('click', ()=>{ window.IS_LIVE = !window.IS_LIVE; mode.textContent = 'Mode: ' + (window.IS_LIVE ? 'Live' : 'Simulation'); if(window.IS_LIVE){ try{ fetchStatus(); }catch(_){ } } }); }catch(_){ }
+
+    // 3D viewer modal wiring
+    try{
+      const o3 = document.getElementById('open3dBtn'); const modal3 = document.getElementById('viewerModal3d'); const close3 = document.getElementById('close3dBtn');
+      if(o3 && modal3){ o3.addEventListener('click', ()=>{ modal3.style.display = 'flex'; document.getElementById('viewerIframe3d').src = '/block_arm'; }); }
+      if(close3 && modal3){ close3.addEventListener('click', ()=>{ modal3.style.display = 'none'; document.getElementById('viewerIframe3d').src = 'about:blank'; }); }
+    }catch(_){ }
+
+    // helper hooks for server updates (kept for compatibility)
+    window.updateControlsFromPositions = function(positions){ try{
+        if(!positions) return;
+        // merge positions into latestPositions
+        window.latestPositions = Object.assign({}, window.latestPositions, positions || {});
+        // update inputs in-place where possible to avoid rebuilding DOM
+        try{
+          const cmap = window.controlsMap || {};
+          JOINT_ORDER.forEach(j=>{
+            try{
+              const val = (window.latestPositions && typeof window.latestPositions[j] === 'number') ? window.latestPositions[j] : null;
+              if(val === null) return;
+              const entry = cmap[j];
+              if(entry && entry.slider){
+                // don't override while user is dragging this control
+                if(entry.dragging) return;
+                // map server value to displayed UI value (respect reverse)
+                const display = (typeof val === 'number') ? _mapFromServer(j, val) : val;
+                const cur = Number(entry.slider.value);
+                if(cur !== Number(display)){
+                  entry.slider.value = Number(display);
+                  if(entry.valEl) entry.valEl.textContent = Number(display) + '°';
+                }
+              }
+            }catch(_){ }
+          });
+        }catch(_){ }
+        // redraw schematic
+        try{ drawBarSchematic(); }catch(_){ }
+      }catch(e){ console.warn('updateControlsFromPositions failed', e); } };
+
+    // Polling loop: always poll server for status (hardware + positions). Update header and controls.
+    function fetchStatus(){
+      return fetch('/api/status').then(r=>r.json()).then(data=>{
+        try{
+          const ok = data && !!data.hardware_available;
+          const statusEl = document.getElementById('headerStatus');
+          if(statusEl){
+            statusEl.textContent = ok ? '✅' : '❌';
+            let tip = `${window.location.host} · hardware: ${ok ? 'OK' : 'Offline'}`;
+            if(data.positions) tip += ` · joints:${Object.keys(data.positions).length}`;
+            statusEl.title = tip;
+            statusEl.style.color = ok ? '#9ee6a0' : '#ff8b8b';
+          }
+          const positions = data.positions || {};
+          if(window.IS_LIVE){ try{ window.updateControlsFromPositions(positions); }catch(_){ } }
+        }catch(_){ }
+      }).catch(()=>{});
+    }
+
+    (function startPolling(){
+      // immediate fetch then interval
+      try{ fetchStatus(); }catch(_){ }
+      setInterval(()=>{ try{ fetchStatus(); }catch(_){ } }, 800);
     })();
+
+    // Wire header buttons (ensure topbar Library button opens the store modal)
+    try{
+      const libTop = document.getElementById('libraryBtn');
+      if(libTop) libTop.addEventListener('click', ()=>{ openStoreModal(); });
+      const storeTop = document.getElementById('storePosBtn');
+      if(storeTop) storeTop.addEventListener('click', ()=>{ openStoreModal(); });
+    }catch(_){ }
+
   })();
-    </script>
+  </script>
 
-  </body>
+</body>
 </html>
-
